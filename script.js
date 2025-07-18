@@ -66,17 +66,20 @@ function handleGeolocation() {
 }
 
 async function fetchCoordsByCity(city) {
-    const geoUrl = `/api/weather?type=geo&city=${encodeURIComponent(city)}`;
+    const Url = `/api/weather?type=geo&city=${city}`;
     try {
-        const response = await fetch(geoUrl);
-        if (!response.ok) throw new Error('Network response was not ok.');
+        const response = await fetch(Url);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Could not find city.');
+        }
         const data = await response.json();
         if (data.length === 0) {
             handleError(`Could not find city: ${city}`);
             return;
         }
         const {lat, lon} = data[0];
-        fetchWeatherByCoords(lat, lon);
+        await fetchWeatherByCoords(lat, lon);
     }
     catch (error) {
         handleError('Error fetching city coordinates.');
@@ -85,26 +88,28 @@ async function fetchCoordsByCity(city) {
 }
 
 async function fetchWeatherByCoords(lat, lon) {
-    const oneCallUrl = `/api/weather?type=weather&lat=${lat}&lon=${lon}`;
+    const url = `/api/weather?type=weather&lat=${lat}&lon=${lon}`;
     try {
-        const response = await fetch(oneCallUrl);
+        const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`);
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Could not fetch weather.');
         }
         const data = await response.json();
         const cityName = await fetchCityName(lat, lon);
         updateUI(data, cityName);
     }
     catch (error) {
-        handleError('Could not fetch weather data.');
+        handleError(error.message);
         console.error(error);
     }   
 }
 
 async function fetchCityName(lat, lon) {
-    const reverseGeoUrl = `/api/weather?type=reverseGeo&lat=${lat}&lon=${lon}`;
+    const url = `/api/weather?type=reverseGeo&lat=${lat}&lon=${lon}`;
     try {
-        const response = await fetch(reverseGeoUrl);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Could not fetch city name.')
         const data = await response.json();
         return data.length > 0 ? data[0].name : 'Current Location';
     }
