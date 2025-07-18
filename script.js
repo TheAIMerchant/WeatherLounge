@@ -124,7 +124,14 @@ function updateUI(weatherData, cityName) {
     uvIndexEl.textContent = current.uvi;
 
     setThemeAndSound(current.weather[0].id);
-    renderHourlyForecast(hourly);
+    
+    if (hourly && Array.isArray(hourly)) {
+        renderHourlyForecast(hourly);
+    }
+    else {
+        console.warn("Hourly forecast data not available for this location.");
+        hourlyForecastEl.innerHTML = '<p style="text-align: center; opacity: 0.7;">Hourly data not available.</p>';
+    }
 }
 
 function renderHourlyForecast(hourly) {
