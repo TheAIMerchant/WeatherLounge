@@ -27,7 +27,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
     geoButton.addEventListener('click', handleGeolocation);
     bodyEl.addEventListener('mousemove', (e) => {
-        bodyEl.style.setProperty('--mousex', `${(e.clientX / window.innerWidth) * 100}%`);
+        bodyEl.style.setProperty('--mouse-x', `${(e.clientX / window.innerWidth) * 100}%`);
         bodyEl.style.setProperty('--mouse-y', `${(e.clientY / window.innerHeight) * 100}%`);
     });
 });
@@ -93,7 +93,7 @@ async function fetchWeatherByCoords(lat, lon) {
         }
         const data = await response.json();
         const cityName = await fetchCityName(lat, lon);
-        updateUI(data.current, cityName);
+        updateUI(data, cityName);
     }
     catch (error) {
         handleError('Could not fetch weather data.');
