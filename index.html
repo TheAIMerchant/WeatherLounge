@@ -3,6 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>WeatherLounge</title>
         <meta name="author" content="TheAIMerchant" />
         <meta name="description" content="Weather Lounge is *being* designed to be a clean weather app that shows you what you need." />
         <meta property="og:description" content="Weather Lounge is *being* designed to be a clean weather app that shows you what you need." />
@@ -11,10 +12,13 @@
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap" rel="stylesheet">
-        <title>WeatherLounge</title>
+        <script src="https://rawgit.com/darkskyapp/skycons/master/skycons.js"></script>
     </head>
 
     <body>
+        <audio id="rain-sound" src="https://freesound.org/people/bastipictures/sounds/243775/download/243775__bastipictures__distant-rain.mp3" loop></audio>
+        <audio id="wind-sound" src="https://freesound.org/people/ZIP.Creates/sounds/726318/download/726318__zipcreates__wind-7.wav" loop></audio>
+        <audio id="thunder-sound" src="https://freesound.org/people/bastipictures/sounds/243778/download/243778__bastipictures__peal-of-thunder-close.mp3" loop></audio>
         <div class="weather-lounge" id="weather-lounge">
             <div class="search-bar">
                 <input type="text" id="city-input" placeholder="Enter a city name">
@@ -22,15 +26,21 @@
                 <button id="geo-button">📍</button>
             </div>
             <div class="weather-card">
-                <h1 id="location-name">Search for a City</h1>
-                <p id="weather-description">or use your current location</p>
-                <div class="main-display">
-                    <div id="weather-icon">lounge</div>
-                    <div id="temperature">--°C</div>
-                </div>
-                <div class="details">
-                    <p>Feels Like: <span id="feels-like">--°C</span></p>
-                    <p>UV Index: <span id="uv-index">--</span></p>
+                <div class="loader" id="loader"></div>
+                <div class="card-content" id="card-content">
+                    <h1 id="location-name">Search for a City</h1>
+                    <p id="weather-description">or use your current location</p>
+                    <div class="main-display">
+                        <canvas id="weather-icon" width="128" height="128"></canvas>
+                        <div id="temperature">--°C</div>
+                    </div>
+                    <div class="details">
+                        <p>Feels Like: <span id="feels-like">--°C</span></p>
+                        <p>UV Index: <span id="uv-index">--</span></p>
+                    </div>
+                    <div class="hourly-forecast-container">
+                        <div class="hourly-forecast" id="hourly-forecast"></div>
+                    </div>
                 </div>
             </div>
         </div>
