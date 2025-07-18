@@ -1,14 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="eng">
     <head>
-        <meta>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="author" content="TheAIMerchant" />
+        <meta name="description" content="Weather Lounge is *being* designed to be a clean weather app that shows you what you need." />
+        <meta property="og:description" content="Weather Lounge is *being* designed to be a clean weather app that shows you what you need." />
+        <meta property="og:title" content="WeatherLounge" />
+        <link rel="stylesheet" href="style.css">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap" rel="stylesheet">
         <title>WeatherLounge</title>
     </head>
+
     <body>
-        <div class="weather-container">
-            <h1 id="location-name">Finding your lounge...</h1>
-            <div id="weather-icon"></div>
+        <div class="weather-lounge" id="weather-lounge">
+            <div class="search-bar">
+                <input type="text" id="city-input" placeholder="Enter a city name">
+                <button id="search-button">Search</button>
+                <button id="geo-button">📍</button>
+            </div>
+            <div class="weather-card">
+                <h1 id="location-name">Search for a City</h1>
+                <p id="weather-description">or use your current location</p>
+                <div class="main-display">
+                    <div id="weather-icon">lounge</div>
+                    <div id="temperature">--°C</div>
+                </div>
+                <div class="details">
+                    <p>Feels Like: <span id="feels-like">--°C</span></p>
+                    <p>UV Index: <span id="uv-index">--</span></p>
+                </div>
+            </div>
         </div>
-    <script src="script.js"></script>
+
+        <footer>
+            <p>Weather data provided by <a href="https://openweathermap.org/" target="_blank">OpenWeather</a>.</p>
+            <p>This data is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a>.</p>
+        </footer>
+        <script src="script.js"></script>
     </body>
 </html>
