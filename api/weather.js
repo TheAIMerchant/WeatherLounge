@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
     const apiKey = process.env.WEATHER_API_KEY;
-    if (!apikey) {
+    if (!apiKey) {
         return res.status(500).json({message: "API key not configured."});
     }
     const {type, city, lat, lon} = req.query;
