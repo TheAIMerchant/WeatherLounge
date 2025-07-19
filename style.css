@@ -18,11 +18,30 @@ body {
     color: var(--text-color);
     height: 100vh;
     overflow: hidden;
-    background-size: 200% 200%;
-    transition: background 1.5s ease-in-out;
+    background-size: 400% 400%;
+    transition: gradientAnimation 20s ease infinite;
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+#effects-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+#foreground-img {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    z-index: 2;
+    pointer-events: none;
 }
 
 body::before {
@@ -177,6 +196,8 @@ body::before {
 }
 
 .weather-lounge {
+    position: relative;
+    z-index: 3;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -188,6 +209,38 @@ body::before {
     display: flex;
     width: 100%;
     margin-bottom: 20px;
+}
+
+.search-bar input {
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+}
+
+#theme-tester {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border-radius: 50px;
+    padding: 5px;
+    display: flex;
+    gap: 5px;
+}
+
+#theme-tester button {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+#theme-tester button:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 #city-input {

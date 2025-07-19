@@ -16,9 +16,17 @@ const rainSound = document.getElementById('rain-sound');
 const windSound = document.getElementById('wind-sound');
 const thunderSound = document.getElementById('thunder-sound');
 const allSounds = [rainSound, windSound, thunderSound];
+const canvas = document.getElementById('effects-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
+
+let particles = [];
+let userHasInteracted = false;
+const mouse = {x: undefined, y: undefined, radius: 150};
 
 window.addEventListener('DOMContentLoaded', () => {
     searchButton.addEventListener('click', handleSearch);
@@ -30,7 +38,24 @@ window.addEventListener('DOMContentLoaded', () => {
         bodyEl.style.setProperty('--mouse-x', `${(e.clientX / window.innerWidth) * 100}%`);
         bodyEl.style.setProperty('--mouse-y', `${(e.clientY / window.innerHeight) * 100}%`);
     });
+    window.addEventListener('mousemove', e => {
+        mouse.x = e.x;
+        mouse.y = e.y;
+    });
+    document.getElementById('theme-tester').addEventListener('click', e => {
+        if (e.target.tagName === 'BUTTON') {
+            userHasInteracted = true;
+            forceTheme(e.target.dataset.theme);
+        }
+    });
+    animate();
 });
+
+function markUserInteraction() {
+    if (!userHasInteracted) {
+        userHasInteracted = true;
+    }
+}
 
 function showLoader() {
     cardContent.classList.add('loading');
@@ -43,6 +68,7 @@ function hideLoader() {
 }
 
 function handleSearch() {
+    markUserInteraction();
     const city = cityInput.value.trim();
     if (city) {
         fetchCoordsByCity(city);
@@ -53,6 +79,7 @@ function handleSearch() {
 }
 
 function handleGeolocation() {
+    markUserInteraction();
     if (navigator.geolocation) {
         showLoader();
         navigator.geolocation.getCurrentPosition(
@@ -157,20 +184,126 @@ function renderHourlyForecast(hourly) {
     });
 }
 
+class Particle {
+    constructor(x, y, size, speedX, speedY) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speedX = speedX;
+        this.speedY = speedY;
+    }
+    update() {
+        let dx = mouse.x - this.x;
+        let dy = mouse.y - this.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < mouse.radius) {
+            this.x -= dx / 10;
+            this.y -= dy / 10;
+        }
+        else {
+            this.x += this.speedX;
+            this.y += this.speedY;
+        }
+
+        if (this.y > canvas.height) {
+            this.y = -this.size;
+            this.x = Math.random() * canvas.width;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+class RainDrop extends Particle {
+    draw() {
+        ctx.strokeStyle = 'rgba(174, 194, 224, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x + this.speedX, this.y + this.speedY);
+        ctx.stroke();
+    }
+}
+
+function createWeatherEffect(effectType) {
+    particles = [];
+    let particleCount = effectType === 'rainy' ? 500 : 200;
+
+    for (let i = 0; i < particleCount; i++) {
+        let size = Math.random() * (effectType === 'rainy' ? 1 : 4) + 1;
+        let x = Math.random() * canvas.width;
+        let y = Math.random() * canvas.height;
+        let speedX = effectType === 'rainy' ? 2 : Math.random() * 2 - 1;
+        let speedY = effectType === 'rainy' ? Math.random() * 8 + 4 : MAth.random() * 2 + 1;
+
+        if (effectType === 'rainy') {
+            particles.push(new RainDrop(x, y, size, speedX, speedY));
+        }
+        else if (effectType === 'snowy') {
+            particles.push(new Particle(x, y, size, speedX, speedY));
+        }
+    }
+}
+
+function drawLightning() {
+    if (Math.random() > 0.99) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+        p.update();
+        p.draw();
+    });
+
+    if (bodyEl.classList.contains('theme-thunderstorm')) {
+        drawLightning();
+    }
+    requestAnimationFrame(animate);
+}
+
+function forceTheme(theme) {
+    bodyEl.className = `theme-${theme}`;
+    stopAllSounds();
+    particles = [];
+
+    if (theme === 'rainy') {
+        rainSound.play().catch(e => {});
+        createWeatherEffect('rainy');
+    }
+    else if (theme === 'snowy') {
+        createWeatherEffect('snowy');
+    }
+    else if (theme === 'thunderstorm') {
+        thunderSound.play().catch(e => {});
+    }
+    else if (theme === 'windy') {
+        windSound.play().catch(e => {});
+    }
+}
+
 function setThemeAndSound(weatherId) {
     const iconName = getWeatherIconName(weatherId);
     icons.set("weather-icon", iconName);
-    bodyEl.className = getThemeClass(iconName);
-    allSounds.forEach(sound => sound.pause());
-    if (iconName.includes('RAIN')) {
-        rainSound.play().catch(e => console.log("Audio autoplay blocked."));
-    }
-    else if (iconName.includes('WIND')) {
-        windSound.play().catch(e => console.log("Audio autoplay blocked."));
-    }
-    else if (iconName.includes('SLEET') || iconName.includes('THUNDER')) {
-        thunderSound.play().catch(e => console.log("Audio autoplay blocked."));
-    }
+    const theme = getThemeClass(iconName).replace('theme-', '');
+    forceTheme(theme);
+}
+
+function stopAllSounds(){
+    allSounds.forEach(sound => {
+        if (sound) {
+            sound.pause();
+            sound.currentTime = 0;
+        }
+    });    
 }
 
 function getWeatherIconName(weatherId) {

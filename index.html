@@ -12,13 +12,12 @@
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap" rel="stylesheet">
-        <script src="https://rawgit.com/darkskyapp/skycons/master/skycons.js"></script>
+        <script src="https://rawgit.com/darkskyapp/skycons/master/skycons.js" defer></script>
     </head>
 
     <body>
-        <audio id="rain-sound" src="https://freesound.org/people/bastipictures/sounds/243775/download/243775__bastipictures__distant-rain.mp3" loop></audio>
-        <audio id="wind-sound" src="https://freesound.org/people/ZIP.Creates/sounds/726318/download/726318__zipcreates__wind-7.wav" loop></audio>
-        <audio id="thunder-sound" src="https://freesound.org/people/bastipictures/sounds/243778/download/243778__bastipictures__peal-of-thunder-close.mp3" loop></audio>
+        <canvas id="effects-canvas"></canvas>
+        <img src="assets/WeatherLounge-Background.png" id="foreground-img" alt="Mountain landscape">
         <div class="weather-lounge" id="weather-lounge">
             <div class="search-bar">
                 <input type="text" id="city-input" placeholder="Enter a city name">
@@ -45,6 +44,18 @@
             </div>
         </div>
 
+        <div id="theme-tester">
+            <button data-theme="sunny">☀️</button>
+            <button data-theme="cloudy">☁️</button>
+            <button data-theme="rainy">🌧️</button>
+            <button data-theme="snowy">❄️</button>
+            <button data-theme="thunderstorm">⚡️</button>
+            <button data-theme="night">🌙</button>
+        </div>
+
+        <audio id="rain-sound" src="https://freesound.org/people/bastipictures/sounds/243775/download/243775__bastipictures__distant-rain.mp3" loop></audio>
+        <audio id="wind-sound" src="https://freesound.org/people/ZIP.Creates/sounds/726318/download/726318__zipcreates__wind-7.wav" loop></audio>
+        <audio id="thunder-sound" src="https://freesound.org/people/bastipictures/sounds/243778/download/243778__bastipictures__peal-of-thunder-close.mp3" loop></audio>
         <footer>
             <p>Weather data provided by <a href="https://openweathermap.org/" target="_blank">OpenWeather</a>.</p>
             <p>This data is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a>.</p>
