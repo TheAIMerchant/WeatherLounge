@@ -181,6 +181,14 @@ body::before {
     text-align: center;
     text-shadow: var(--text-shadow);
     position: relative; 
+    transition: backdrop-filter 0.5s ease;
+}
+
+.theme-rainy .weather-card {
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    -webkit-mask-image: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y), rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%,);
+    mask-image: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y),  rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%,);
 }
 
 .card-content {

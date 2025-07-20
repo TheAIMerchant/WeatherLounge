@@ -12,6 +12,7 @@ const feelsLikeEl = document.getElementById('feels-like');
 const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
 const foregroundOverlay = document.getElementById('foreground-overlay');
+const weatherCard = document.querySelector('.weather-card');
 
 const rainSound = document.getElementById('rain-sound');
 const windSound = document.getElementById('wind-sound');
@@ -52,6 +53,16 @@ window.addEventListener('DOMContentLoaded', () => {
         if (e.target.tagName === 'BUTTON') {
             userHasInteracted = true;
             forceTheme(e.target.dataset.theme);
+        }
+    });
+    weatherCard.addEventListener('mousemove', e => {
+        if (bodyEl.classList.contains('theme-rainy')) {
+            const rect = weatherCard.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y =e.clientY - rect.top;
+
+            weatherCard.style.setProperty('--mouse-x', `${x}px`);
+            weatherCard.style.setProperty('--mouse-y', `${y}px`);
         }
     });
     umbrellaButton.addEventListener('click', toggleUmbrella);
