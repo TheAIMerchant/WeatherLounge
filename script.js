@@ -11,24 +11,29 @@ const descEl = document.getElementById('weather-description');
 const feelsLikeEl = document.getElementById('feels-like');
 const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
+const foregroundOverlay = document.getElementById('foreground-overlay');
 
 const rainSound = document.getElementById('rain-sound');
 const windSound = document.getElementById('wind-sound');
 const thunderSound = document.getElementById('thunder-sound');
 const allSounds = [rainSound, windSound, thunderSound];
+
+const umbrellaButton = document.getElementById('umbrella-button');
+let isUmbrellaActive = true;
+
 const canvas = document.getElementById('effects-canvas');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
 
 let particles = [];
+let stars = [];
 let userHasInteracted = false;
 const mouse = {x: undefined, y: undefined, radius: 150};
 
 window.addEventListener('DOMContentLoaded', () => {
+    setupCanvas();
     searchButton.addEventListener('click', handleSearch);
     cityInput.addEventListener('keyup', (event) => {
         if (event.key === 'Enter') handleSearch();
@@ -42,14 +47,28 @@ window.addEventListener('DOMContentLoaded', () => {
         mouse.x = e.x;
         mouse.y = e.y;
     });
+    window.addEventListener('resize', setupCanvas);
     document.getElementById('theme-tester').addEventListener('click', e => {
         if (e.target.tagName === 'BUTTON') {
             userHasInteracted = true;
             forceTheme(e.target.dataset.theme);
         }
     });
+    umbrellaButton.addEventListener('click', toggleUmbrella);
+    updateUmbrellaButton();
     animate();
 });
+
+function setupCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    if (bodyEl.classList.contains('theme-rainy')) {
+        createWeatherEffect('rainy');
+    } else if (bodyEl.classList.contains('theme-snowy')) {
+        createWeatherEffect('snowy');
+    }
+}
 
 function markUserInteraction() {
     if (!userHasInteracted) {
@@ -72,8 +91,7 @@ function handleSearch() {
     const city = cityInput.value.trim();
     if (city) {
         fetchCoordsByCity(city);
-    }
-    else {
+    } else {
         handleError('Please enter a city name.');
     }
 }
@@ -86,8 +104,7 @@ function handleGeolocation() {
             (position) => fetchWeatherByCoords(position.coords.latitude, position.coords.longitude), 
                 () => handleError('Geolocation denied. Please search for a city.')
         );
-    }
-    else {
+    } else {
         handleError('Geolocation is not supported by your browser.');
     }
 }
@@ -159,8 +176,7 @@ function updateUI(weatherData, cityName) {
     
     if (hourly && Array.isArray(hourly)) {
         renderHourlyForecast(hourly);
-    }
-    else {
+    } else {
         console.warn("Hourly forecast data not available for this location.");
         hourlyForecastEl.innerHTML = '<p style="text-align: center; opacity: 0.7;">Hourly data not available.</p>';
     }
@@ -184,6 +200,21 @@ function renderHourlyForecast(hourly) {
     });
 }
 
+function toggleUmbrella() {
+    isUmbrellaActive = !isUmbrellaActive;
+    updateUmbrellaButton();
+}
+
+function updateUmbrellaButton() {
+    if (isUmbrellaActive) {
+        umbrellaButton.classList.add('active');
+        umbrellaButton.title = "Interaction is ON";
+    } else {
+        umbrellaButton.classList.remove('active');
+        umbrellaButton.title = "Interaction is OFF";
+    }
+}
+
 class Particle {
     constructor(x, y, size, speedX, speedY) {
         this.x = x;
@@ -193,19 +224,25 @@ class Particle {
         this.speedY = speedY;
     }
     update() {
-        let dx = mouse.x - this.x;
-        let dy = mouse.y - this.y;
-        let distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < mouse.radius) {
-            this.x -= dx / 10;
-            this.y -= dy / 10;
-        }
-        else {
-            this.x += this.speedX;
-            this.y += this.speedY;
-        }
+        this.x += this.speedX;
+        this.y += this.speedY;
+        
+        if (isUmbrellaActive) {
+            let dx = mouse.x - this.x;
+            let dy = mouse.y - this.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (this.y > canvas.height) {
+            if (distance < mouse.radius) {
+                const forceDirectionX = dx / distance;
+                const forceDirectionY = dy / distance;
+                const force = (mouse.radius - distance) / mouse.radius;
+                const directionX = forceDirectionX * force * this.size;
+                const directionY = forceDirectionY * force * this.size;
+                this.x -= directionX;
+                this.y -= directionY;
+            }
+        }
+        if (this.y > canvas.height + this.size || this.x > canvas.width + this.size || this.x < -this.size) {
             this.y = -this.size;
             this.x = Math.random() * canvas.width;
         }
@@ -222,30 +259,85 @@ class Particle {
 class RainDrop extends Particle {
     draw() {
         ctx.strokeStyle = 'rgba(174, 194, 224, 0.5)';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x + this.speedX, this.y + this.speedY);
+        ctx.lineTo(this.x + this.speedX * 3, this.y + this.speedY * 3);
         ctx.stroke();
+    }
+}
+
+class Snowflake extends Particle {
+    constructor(x, y, size, speedX, speedY) {
+        super(x, y, size, speedX, speedY);
+        this.angle = Math.random() * Math.PI * 2;
+        this.spin = Math.random() < 0.5 ? 0.005 : -0.005;
+    }
+
+    update() {
+        this.angle += this.spin;
+        this.x += Math.sin(this.angle) * 0.5;
+        super.update();
+    }
+
+    draw() {
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+class Star {
+    constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.radius = Math.random() * 1.5;
+        this.alpha = Math.random() * 0.5 + 0.5;
+        this.twinkleSpeed = Math.random() * 0.015;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    update() {
+        this.alpha += this.twinkleSpeed;
+        if (this.alpha > 1 || this.alpha < 0.3) {
+            this.twinkleSpeed *= -1;
+        }
+    }
+}
+
+function createStars() {
+    stars = [];
+    const starCount = window.innerWidth / 8;
+    for (let i = 0; i < starCount; i++) {
+        stars.push(new Star());
     }
 }
 
 function createWeatherEffect(effectType) {
     particles = [];
-    let particleCount = effectType === 'rainy' ? 500 : 200;
+    let particleCount = effectType === 'rainy' ? 800 : 200;
 
     for (let i = 0; i < particleCount; i++) {
-        let size = Math.random() * (effectType === 'rainy' ? 1 : 4) + 1;
+        let size = Math.random() * (effectType === 'rainy' ? 1.5 : 3) + 1;
         let x = Math.random() * canvas.width;
         let y = Math.random() * canvas.height;
-        let speedX = effectType === 'rainy' ? 2 : Math.random() * 2 - 1;
-        let speedY = effectType === 'rainy' ? Math.random() * 8 + 4 : MAth.random() * 2 + 1;
+        let speedX = effectType === 'rainy' ? 2.5 : Math.random() * 0.5 - 0.25;
+        let speedY = effectType === 'rainy' ? Math.random() * 8 + 6 : Math.random() * 1.5 + 0.5;
 
         if (effectType === 'rainy') {
             particles.push(new RainDrop(x, y, size, speedX, speedY));
-        }
-        else if (effectType === 'snowy') {
-            particles.push(new Particle(x, y, size, speedX, speedY));
+        } else if (effectType === 'snowy') {
+            particles.push(new Snowflake(x, y, size, speedX, speedY));
         }
     }
 }
@@ -259,34 +351,60 @@ function drawLightning() {
 
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    particles.forEach(p => {
-        p.update();
-        p.draw();
-    });
 
-    if (bodyEl.classList.contains('theme-thunderstorm')) {
-        drawLightning();
+    if (stars.length > 0) {
+        stars.forEach(star => {
+            star.update();
+            star.draw();
+        });
+    }
+
+    if (particles.length > 0) {
+        particles.forEach(p => {
+            p.update();
+            p.draw();
+        });
+    }
+
+    if (bodyEl.classList.contains('theme-sunny')) {
+        let sunX = canvas.width / 2;
+        let sunY = 0;
+        let gradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, canvas.width / 2);
+        gradient.addColorStop(0, 'rgba(255, 255, 220, 0.2)');
+        gradient.addColorStop(0.4, 'rgba(255, 255, 220, 0.0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (bodyEl.classList.contains('theme-thunderstorm')) {
+        if (Math.random() > 0.995) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
     }
     requestAnimationFrame(animate);
 }
 
 function forceTheme(theme) {
     bodyEl.className = `theme-${theme}`;
+    foregroundOverlay.className = `overlay-${theme}`;
     stopAllSounds();
     particles = [];
+    stars = [];
+    bodyEl.classList.remove('show-snow-buildup');
 
     if (theme === 'rainy') {
         rainSound.play().catch(e => {});
         createWeatherEffect('rainy');
-    }
-    else if (theme === 'snowy') {
+    } else if (theme === 'snowy') {
         createWeatherEffect('snowy');
-    }
-    else if (theme === 'thunderstorm') {
+        setTimeout(() => {
+            bodyEl.classList.add('show-snow-buildup');
+        }, 2000);
+    } else if (theme === 'thunderstorm') {
         thunderSound.play().catch(e => {});
-    }
-    else if (theme === 'windy') {
+    } else if (theme === 'windy') {
         windSound.play().catch(e => {});
+    } else if (theme === 'night') {
+        createStars();
     }
 }
 

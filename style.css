@@ -19,10 +19,18 @@ body {
     height: 100vh;
     overflow: hidden;
     background-size: 400% 400%;
-    transition: gradientAnimation 20s ease infinite;
+    animation: gradientAnimation 20s ease infinite;
+    transition: background 1.5s ease-in-out;
+    background-color: #1a1a2e;
     display: flex;
     justify-content: center;
     align-items: center;
+}
+
+@keyframes gradientAnimation {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
 }
 
 #effects-canvas {
@@ -31,19 +39,31 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 1;
+    z-index: 4;
 }
 
 #foreground-img {
     position: fixed;
     bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 65vh;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    height: 70vh;
     object-fit: cover;
     object-position: center bottom;
     z-index: 2;
     pointer-events: none;
+}
+
+#foreground-overlay {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    transition: background-color 1.5s ease-in-out, backdrop-filter 1.5s ease-in-out;
 }
 
 body::before {
@@ -53,13 +73,18 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.1), transparent 40%);
+    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.05), transparent 30%);
     transition: background 0.2s ease-out;
     pointer-events: none;
+    z-index: 1;
 }
 
 .theme-sunny {
     background: linear-gradient(-45deg, #f7b733, #fc4a1a, #ef473a, #ff7e5f);
+}
+
+.theme-sunny body::before {
+    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(0, 0, 50, 0.15) 0%, transparent 25%);
 }
 
 .theme-cloudy {
@@ -76,6 +101,25 @@ body::before {
     text-shadow: none;
 }
 
+.theme-snowy .weather-card::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 100%;
+    height: 15px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255,255,255,0));
+    border-radius: 20px 20px 0 0;
+    z-index: 1;
+    transform: scaleY(0);
+    transform-origin: top;
+    transition: transform 30s linear;
+}
+
+.theme-snowy.show-snow-buildup .weather-card::before {
+    transform: scaleY(1);
+}
+
 .theme-thunderstorm {
     background: linear-gradient(-45deg, #232526, #414345, #000000, #3c1053);
 }
@@ -86,6 +130,44 @@ body::before {
 
 .theme-night {
     background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #0F1626);
+}
+
+.theme-night body::before {
+    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 248, 220, 0.15) 0%, rgba(255, 248, 220, 0.0) 20%);
+}
+
+.overlay-rainy {
+    background-color: rgba(0, 10, 20, 0.3);
+    backdrop-filter: brightness(0.7) saturate(0.8);
+}
+
+.overlay-thunderstorm {
+    background-color: rgba(10, 0, 20, 0.4);
+    backdrop-filter: brightness(0.5) contrast(1.2);
+}
+
+.overlay-snowy {
+    background-color: rgba(200, 200, 220, 0.2);
+    backdrop-filter: brightness(0.9) saturate(0.5);
+}
+
+.overlay-sunny {
+    background-color: rgba(255, 200, 100, 0.1);
+    backdrop-filter: brightness(1.1) saturate(1.2);
+}
+
+.overlay-night {
+    background-color: rgba(0, 5, 25, 0.5);
+    backdrop-filter: brightness(0.3) saturate(0.7);
+}
+
+.overlay-cloudy {
+    backdrop-filter: brightness(0.95);
+}
+
+.overlay-misty {
+    background-color: rgba(100, 100, 110, 0.2);
+    backdrop-filter: brightness(0.8);
 }
 
 .weather-card {
@@ -199,18 +281,26 @@ body::before {
 
 .weather-lounge {
     position: relative;
-    z-index: 3;
+    z-index: 5;
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 90%;
     max-width: 500px;
+    padding: 20px;
 }
 
 .search-bar {
     display: flex;
     width: 100%;
     margin-bottom: 20px;
+    background-color: var(--card-background);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 50px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .search-bar input {
@@ -245,31 +335,69 @@ body::before {
     background: rgba(255, 255, 255, 0.2);
 }
 
+#interaction-toggle {
+    position: fixed;
+    top: 90px;
+    right: 20px;
+    z-index: 10;
+}
+
+#umbrella-button {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    font-size: 1.5rem;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 50%;
+    color: white;
+    transition: background 0.2s, transform 0.2s;
+}
+
+#umbrella-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+#umbrella-button.active {
+    background: #007bff;
+}
+
 #city-input {
     flex-grow: 1;
     border: none;
-    padding: 15px;
+    padding: 15px 20px;
     font-size: 1rem;
-    border-radius: 50px 0 0 50px;
     outline: none;
+    background: transparent;
+    color: var(--text-color);
+}
+
+#city-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
 }
 
 #search-button, #geo-button {
-    padding: 15px;
+    padding: 15px 20px;
     border: none;
-    background: #007bff;
+    background: rgba(255, 255, 255, 0.1);
     color: white;
     cursor: pointer;
     font-size: 1rem;
+    transition: background 0.3s ease;
+}
+
+#search-button:hover, #geo-button:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 #search-button {
-    border-radius: 0;
+    border-left: 1px solid var(--border-color);
 }
 
 #geo-button {
-    border-radius: 0 50px 50px 0;
-    background: #28a745;
+    border-left: 1px solid var(--border-color);
+    font-size: 1.2rem;
 }
 
 .details {

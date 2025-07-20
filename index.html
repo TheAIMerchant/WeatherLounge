@@ -18,6 +18,7 @@
     <body>
         <canvas id="effects-canvas"></canvas>
         <img src="assets/NewBackground.webp" id="foreground-img" alt="Mountain landscape">
+        <div id="foreground-overlay"></div>
         <div class="weather-lounge" id="weather-lounge">
             <div class="search-bar">
                 <input type="text" id="city-input" placeholder="Enter a city name">
@@ -51,6 +52,9 @@
             <button data-theme="snowy">❄️</button>
             <button data-theme="thunderstorm">⚡️</button>
             <button data-theme="night">🌙</button>
+        </div>
+        <div id="interaction-toggle">
+            <button id="umbrella-button" title="Toggle Interaction">☂️</button>
         </div>
 
         <audio id="rain-sound" src="https://freesound.org/people/bastipictures/sounds/243775/download/243775__bastipictures__distant-rain.mp3" loop></audio>
