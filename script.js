@@ -11,81 +11,98 @@ const descEl = document.getElementById('weather-description');
 const feelsLikeEl = document.getElementById('feels-like');
 const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
-const foregroundOverlay = document.getElementById('foreground-overlay');
-const weatherCard = document.querySelector('.weather-card');
-const torchButton = document.getElementById('torch-button');
-let isTorchActive = true;
 
+// Canvases
+const skyCanvas = document.getElementById('sky-canvas');
+const skyCtx = skyCanvas.getContext('2d');
+const effectsCanvas = document.getElementById('effects-canvas');
+const effectsCtx = effectsCanvas.getContext('2d');
+const weatherCard = document.querySelector('.weather-card');
+const cardEffectsCanvas = document.getElementById('card-effects-canvas');
+const cardEffectsCtx = cardEffectsCanvas.getContext('2d');
+
+// Tools
+const umbrellaButton = document.getElementById('umbrella-button');
+const heaterButton = document.getElementById('heater-button');
+const torchButton = document.getElementById('torch-button');
+
+// Audio
 const rainSound = document.getElementById('rain-sound');
 const windSound = document.getElementById('wind-sound');
 const thunderSound = document.getElementById('thunder-sound');
 const allSounds = [rainSound, windSound, thunderSound];
 
-const umbrellaButton = document.getElementById('umbrella-button');
-let isUmbrellaActive = true;
-
-const canvas = document.getElementById('effects-canvas');
-const ctx = canvas.getContext('2d');
-const skyCanvas = document.getElementById('sky-canvas');
-const skyCtx = skyCanvas.getContext('2d');
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
-let shootingStars = [];
+let currentTheme = 'night'
 let particles = [];
 let stars = [];
+let clouds = [];
+let frostLines = [];
+let waterDroplets = [];
 let userHasInteracted = false;
+let shootingStars = [];
+let isUmbrellaActive = true;
+let isHeaterActive = true;
+let isTorchActive = true;
 const mouse = {x: undefined, y: undefined, radius: 300};
 
 window.addEventListener('DOMContentLoaded', () => {
     setupCanvas();
+    addEventListeners();
+    forceTheme('night');
+    animate();
+});
+
+function addEventListeners() {
     searchButton.addEventListener('click', handleSearch);
     cityInput.addEventListener('keyup', (event) => {
         if (event.key === 'Enter') handleSearch();
     });
     geoButton.addEventListener('click', handleGeolocation);
-    bodyEl.addEventListener('mousemove', (e) => {
-        bodyEl.style.setProperty('--mouse-x', `${(e.clientX / window.innerWidth) * 100}%`);
-        bodyEl.style.setProperty('--mouse-y', `${(e.clientY / window.innerHeight) * 100}%`);
-    });
-    window.addEventListener('mousemove', e => {
-        mouse.x = e.x;
-        mouse.y = e.y;
-    });
+    window.addEventListener('mouusemove', handleMouseMove);
     window.addEventListener('resize', setupCanvas);
+
+    umbrellaButton.addEventListener('click', () => toggleTool('umbrella'));
+    heaterButton.addEventListener('click', () => toggleTool('heater'));
+    torchButton.addEventListener('click', () => toggleTool('torch'));
+
     document.getElementById('theme-tester').addEventListener('click', e => {
-        if (e.target.tagName === 'BUTTON') {
-            userHasInteracted = true;
+        if (e.target.tagNAme === 'BUTTON') {
+            markUserInteraction();
             forceTheme(e.target.dataset.theme);
         }
     });
-    weatherCard.addEventListener('mousemove', e => {
-        if (bodyEl.classList.contains('theme-rainy')) {
-            const rect = weatherCard.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y =e.clientY - rect.top;
-
-            weatherCard.style.setProperty('--mouse-x', `${x}px`);
-            weatherCard.style.setProperty('--mouse-y', `${y}px`);
-        }
-    });
-    umbrellaButton.addEventListener('click', toggleUmbrella);
-    torchButton.addEventListener('click', toggleTorch);
-    updateUmbrellaButton();
-    animate();
-});
+}
 
 function setupCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const setCanvasSize = (canvas) => {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+    };
+
     skyCanvas.width = window.innerWidth;
     skyCanvas.height = window.innerHeight;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    effectsCanvas.width = window.innerWidth;
+    effectsCanvas.height = window.innerHeight;
+    setCanvasSize(cardEffectsCanvas);
+    forceTheme(currentTheme);
+}
 
-    if (bodyEl.classList.contains('theme-rainy')) {
-        createWeatherEffect('rainy');
-    } else if (bodyEl.classList.contains('theme-snowy')) {
-        createWeatherEffect('snowy');
-    }
+function handleMouseMove(e) {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    bodyEl.style.setProperty('--mouse-x', `${e.clientX}px`);
+    bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`);
+
+    const cardRect = weatherCard.getBoundingClientRect();
+    mouse.cardX = e.clientX - cardRect.left;
+    mouse.cardY = e.clientY - cardRect.top;
 }
 
 function markUserInteraction() {
