@@ -39,18 +39,17 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 4;
+    z-index: 1;
 }
 
 #foreground-img {
     position: fixed;
-    bottom: 0;
+    top: 0;
     left: 50%;
     transform: translateX(-50%);
     width: auto;
-    height: 70vh;
-    object-fit: cover;
-    object-position: center bottom;
+    height: 100vh;
+    object-fit: contain;
     z-index: 2;
     pointer-events: none;
 }
