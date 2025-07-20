@@ -26,6 +26,8 @@ let isUmbrellaActive = true;
 
 const canvas = document.getElementById('effects-canvas');
 const ctx = canvas.getContext('2d');
+const skyCanvas = document.getElementById('sky-canvas');
+const skyCtx = skyCanvas.getContext('2d');
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
@@ -74,6 +76,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupCanvas() {
+    skyCanvas.width = window.innerWidth;
+    skyCanvas.height = window.innerHeight;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
@@ -413,6 +417,7 @@ function drawLightning() {
 
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
 
     if (stars.length > 0) {
         stars.forEach(star => {

@@ -33,13 +33,28 @@ body {
     100% {background-position: 0% 50%;}
 }
 
-#effects-canvas {
+@keyframes rain-streaks {
+    0% {background-position: 0 0;}
+    100% {background-position: 20px 40px;}
+}
+
+#sky-canvas {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     z-index: 1;
+}
+
+#effects-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 4;
+    pointer-events: none;
 }
 
 #foreground-img {
@@ -96,8 +111,6 @@ body::before {
 
 .theme-snowy {
     background: linear-gradient(-45deg, #E6DADA, #FFFFFF, #DAD4B5, #f7f7f7);
-    color: #333;
-    text-shadow: none;
 }
 
 .theme-snowy .weather-card::before {
@@ -113,6 +126,11 @@ body::before {
     transform: scaleY(0);
     transform-origin: top;
     transition: transform 30s linear;
+}
+
+.theme-snowy .weather-card {
+    color: #e0e0e0;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
 }
 
 .theme-snowy.show-snow-buildup .weather-card::before {
@@ -204,10 +222,11 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: linear-gradient(175deg, transparent 95%, rgba(255, 255, 255, 0.3) 95%), linear-gradient(190deg, transparent 90%, rgba(255, 255, 255, 0.2) 90%);
-    background-size: 10px 10px, 15px 15px;
+    background-image: linear-gradient(170deg, transparent 50%, rgba(255, 255, 255, 0.2) 80%, transparent 100%);
+    background-size: 30px 30px;
     z-index: -1;
-    opacity: 0.5;
+    opacity: 0.6;
+    animation: rain-streaks 1s linear infinite;
 }
 
 .card-content {
