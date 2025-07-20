@@ -13,6 +13,8 @@ const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
 const foregroundOverlay = document.getElementById('foreground-overlay');
 const weatherCard = document.querySelector('.weather-card');
+const torchButton = document.getElementById('torch-button');
+let isTorchActive = true;
 
 const rainSound = document.getElementById('rain-sound');
 const windSound = document.getElementById('wind-sound');
@@ -27,11 +29,11 @@ const ctx = canvas.getContext('2d');
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
-
+let shootingStars = [];
 let particles = [];
 let stars = [];
 let userHasInteracted = false;
-const mouse = {x: undefined, y: undefined, radius: 150};
+const mouse = {x: undefined, y: undefined, radius: 300};
 
 window.addEventListener('DOMContentLoaded', () => {
     setupCanvas();
@@ -66,6 +68,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
     umbrellaButton.addEventListener('click', toggleUmbrella);
+    torchButton.addEventListener('click', toggleTorch);
     updateUmbrellaButton();
     animate();
 });
@@ -226,6 +229,21 @@ function updateUmbrellaButton() {
     }
 }
 
+function toggleTorch() {
+    isTorchActive = !isTorchActive;
+    updateTorchButton();
+}
+
+function updateTorchButton() {
+    if (isTorchActive) {
+        torchButton.classList.add('active');
+        bodyEl.classList.add('torch-on');
+    } else {
+        torchButton.classList.remove('active');
+        bodyEl.classList.remove('torch-on');
+    }
+}
+
 class Particle {
     constructor(x, y, size, speedX, speedY) {
         this.x = x;
@@ -247,8 +265,9 @@ class Particle {
                 const forceDirectionX = dx / distance;
                 const forceDirectionY = dy / distance;
                 const force = (mouse.radius - distance) / mouse.radius;
-                const directionX = forceDirectionX * force * this.size;
-                const directionY = forceDirectionY * force * this.size;
+                const forceMultiplier = 10;
+                const directionX = forceDirectionX * force * this.size * forceMultiplier;
+                const directionY = forceDirectionY * force * this.size * forceMultiplier;
                 this.x -= directionX;
                 this.y -= directionY;
             }
@@ -326,6 +345,38 @@ class Star {
     }
 }
 
+class shootingStar {
+    constructor() {
+        this.reset();        
+    }
+    reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = 0;
+        this.len = Math.random() * 80 + 10;
+        this.speed = Math.random() * 10 + 6;
+        this.active = true;
+    }
+    update() {
+        if (this.active) {
+            this.x -= this.speed;
+            this.y += this.speed;
+            if (this.x < 0 || this.y > canvas.height) {
+                this.active = false;
+            }
+        }
+    }
+    draw() {
+        if (this.active) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.len, this.y - this.len);
+            ctx.stroke();
+        }
+    }
+}
+
 function createStars() {
     stars = [];
     const starCount = window.innerWidth / 8;
@@ -390,6 +441,17 @@ function animate() {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
+    } else if (bodyEl.classList.contains('theme-night')) {
+        if (Math.random() < 0.01 && shootingStars.length < 3) {
+            shootingStars.push(new shootingStar());
+        }
+        shootingStars.forEach((star, index) => {
+            star.update();
+            star.draw();
+            if (!star.active) {
+                shootingStars.splice(index, 1);
+            }
+        });
     }
     requestAnimationFrame(animate);
 }
@@ -414,9 +476,14 @@ function forceTheme(theme) {
         thunderSound.play().catch(e => {});
     } else if (theme === 'windy') {
         windSound.play().catch(e => {});
-    } else if (theme === 'night') {
-        createStars();
     }
+    if (theme === 'night') {
+        createStars();
+        isTorchActive = true;
+    } else {
+        isTorchActive = false;
+    }
+    updateTorchButton();
 }
 
 function setThemeAndSound(weatherId) {

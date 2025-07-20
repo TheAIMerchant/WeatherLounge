@@ -50,7 +50,7 @@ body {
     width: auto;
     height: 100vh;
     object-fit: contain;
-    z-index: 2;
+    z-index: 1;
     pointer-events: none;
 }
 
@@ -107,7 +107,7 @@ body::before {
     left: 0;
     width: 100%;
     height: 15px;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255,255,255,0));
+    background: linear-gradient(to bottom, rgba(255,255,255,0.7), rgba(255, 255, 255, 0));
     border-radius: 20px 20px 0 0;
     z-index: 1;
     transform: scaleY(0);
@@ -132,6 +132,11 @@ body::before {
 }
 
 .theme-night body::before {
+    background: transparent;
+    transition: background 0.5s ease;
+}
+
+.theme-night.torch-on body::before {
     background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 248, 220, 0.15) 0%, rgba(255, 248, 220, 0.0) 20%);
 }
 
@@ -184,10 +189,25 @@ body::before {
 }
 
 .theme-rainy .weather-card {
-    backdrop-filter: blur(30px);
-    -webkit-backdrop-filter: blur(30px);
-    -webkit-mask-image: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y), rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%,);
-    mask-image: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y),  rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.1) 100%,);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    -webkit-mask-image: radial-gradient(circle 180px at var(--mouse-x) var(--mouse-y), rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0) 100%,);
+    mask-image: radial-gradient(circle 180px at var(--mouse-x) var(--mouse-y),  rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0) 100%,);
+    position: relative;
+    overflow: hidden;
+}
+
+.theme-rainy .weather-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: linear-gradient(175deg, transparent 95%, rgba(255, 255, 255, 0.3) 95%), linear-gradient(190deg, transparent 90%, rgba(255, 255, 255, 0.2) 90%);
+    background-size: 10px 10px, 15px 15px;
+    z-index: -1;
+    opacity: 0.5;
 }
 
 .card-content {
@@ -368,6 +388,32 @@ body::before {
 
 #umbrella-button.active {
     background: #007bff;
+}
+
+#torch-button {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    font-size: 1.5 rem;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 50%;
+    color: white;
+    transition: background 0.2s, transform 0.2s;
+    display: none;
+}
+
+#torch-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+#torch-button.active {
+    background: #ffc107;
+}
+
+.theme-night #torch-button {
+    display: inline-block;
 }
 
 #city-input {
