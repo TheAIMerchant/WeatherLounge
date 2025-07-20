@@ -17,8 +17,8 @@
 
     <body>
         <canvas id="sky-canvas"></canvas>
-        <canvas id="effects-canvas"></canvas>
         <img src="assets/NewBackground.webp" id="foreground-img" alt="Mountain landscape">
+        <canvas id="effects-canvas"></canvas>
         <div id="foreground-overlay"></div>
         <div class="weather-lounge" id="weather-lounge">
             <div class="search-bar">
@@ -27,10 +27,11 @@
                 <button id="geo-button">📍</button>
             </div>
             <div class="weather-card">
+                <canvas id="card-effects-canvas"></canvas>
                 <div class="loader" id="loader"></div>
                 <div class="card-content" id="card-content">
                     <h1 id="location-name">Search for a City</h1>
-                    <p id="weather-description">or use your current location</p>
+                    <p id="weather-description">Or use your current location</p>
                     <div class="main-display">
                         <canvas id="weather-icon" width="128" height="128"></canvas>
                         <div id="temperature">--°C</div>
@@ -46,6 +47,11 @@
             </div>
         </div>
 
+        <div id="tools-sidebar">
+            <button id="umbrella-button" title="Toggle Umbrella Shield" class="tool-button">☂️</button>
+            <button id="heater-button" title="Toggle Frost Melting" class="tool-button">🔥</button>
+            <button id="torch-button" title="Toggle Torch" class="tool-button">🔦</button>
+        </div>
         <div id="theme-tester">
             <button data-theme="sunny">☀️</button>
             <button data-theme="cloudy">☁️</button>
@@ -54,13 +60,6 @@
             <button data-theme="thunderstorm">⚡️</button>
             <button data-theme="night">🌙</button>
         </div>
-        <div id="interaction-toggle">
-            <button id="umbrella-button" title="Toggle Interaction">☂️</button>
-        </div>
-        <div id="interaction-toggle">
-            <button id="torch-button" title="Toggle Torch">🔦</button>
-        </div>
-
         <audio id="rain-sound" src="https://freesound.org/people/bastipictures/sounds/243775/download/243775__bastipictures__distant-rain.mp3" loop></audio>
         <audio id="wind-sound" src="https://freesound.org/people/ZIP.Creates/sounds/726318/download/726318__zipcreates__wind-7.wav" loop></audio>
         <audio id="thunder-sound" src="https://freesound.org/people/bastipictures/sounds/243778/download/243778__bastipictures__peal-of-thunder-close.mp3" loop></audio>
