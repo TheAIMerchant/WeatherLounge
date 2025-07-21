@@ -145,24 +145,17 @@ function handleGeolocation() {
 }
 
 async function fetchCoordsByCity(city) {
-    const Url = `/api/weather?type=geo&city=${city}`;
+    const url = `/api/weather?type=geo&city=${city}`;
     try {
-        const response = await fetch(Url);
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Could not find city.');
-        }
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('City not found.');
         const data = await response.json();
-        if (data.length === 0) {
-            handleError(`Could not find city: ${city}`);
-            return;
-        }
+        if (data.length === 0) throw new Error(`Could not find city: ${city}`);
         const {lat, lon} = data[0];
         await fetchWeatherByCoords(lat, lon);
     }
     catch (error) {
-        handleError('Error fetching city coordinates.');
-        console.error(error);
+        handleError(error.message);
     }
 }
 
@@ -170,17 +163,13 @@ async function fetchWeatherByCoords(lat, lon) {
     const url = `/api/weather?type=weather&lat=${lat}&lon=${lon}`;
     try {
         const response = await fetch(url);
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Could not fetch weather.');
-        }
+        if (!response.ok) throw new Error('Could not fetch weather data.');
         const data = await response.json();
         const cityName = await fetchCityName(lat, lon);
         updateUI(data, cityName);
     }
     catch (error) {
         handleError(error.message);
-        console.error(error);
     }   
 }
 
@@ -188,12 +177,11 @@ async function fetchCityName(lat, lon) {
     const url = `/api/weather?type=reverseGeo&lat=${lat}&lon=${lon}`;
     try {
         const response = await fetch(url);
-        if (!response.ok) throw new Error('Could not fetch city name.')
+        if (!response.ok) return 'Current Location';
         const data = await response.json();
         return data.length > 0 ? data[0].name : 'Current Location';
     }
     catch(error) {
-        console.error('Could not fetch city name:', error);
         return 'Current Location';
     }
 }
@@ -207,12 +195,15 @@ function updateUI(weatherData, cityName) {
     feelsLikeEl.textContent = `${Math.round(current.feels_like)}°C`;
     uvIndexEl.textContent = current.uvi;
 
-    setThemeAndSound(current.weather[0].id);
+    const iconName = getWeatherIconName(current.weather[0].id);
+    icons.set("weather-icon", iconName);
+
+    const theme = getThemeClass(iconName);
+    forceTheme(theme);
     
     if (hourly && Array.isArray(hourly)) {
         renderHourlyForecast(hourly);
     } else {
-        console.warn("Hourly forecast data not available for this location.");
         hourlyForecastEl.innerHTML = '<p style="text-align: center; opacity: 0.7;">Hourly data not available.</p>';
     }
 }
@@ -235,34 +226,225 @@ function renderHourlyForecast(hourly) {
     });
 }
 
-function toggleUmbrella() {
-    isUmbrellaActive = !isUmbrellaActive;
-    updateUmbrellaButton();
+function handleError(message) {
+    hideLoader();
+    locationEl.textContent = 'Error!';
+    descEl.textContent = message;
+    icons.set("weather-icon", "CLOUDY");
+    tempEl.textContent = '--°C';
+    feelsLikeEl.textContent = '--°C';
+    uvIndexEl.textContent = '--';
+    hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
 }
 
-function updateUmbrellaButton() {
-    if (isUmbrellaActive) {
-        umbrellaButton.classList.add('active');
-        umbrellaButton.title = "Interaction is ON";
+function forceTheme(theme) {
+    currentTheme = theme;
+    bodyEl.className = `theme-${theme}`;
+
+    stopAllSounds();
+    particles = [];
+    stars = [];
+    clouds = [];
+    frostLines = [];
+    waterDroplets = [];
+    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
+    
+    createStars(theme === 'night' ? window.innerWidth / 8 : 0);
+    createClouds(theme);
+    
+    if (theme === 'rainy') {
+        if (userHasInteracted) rainSound.play().catch(e => {});
+        createWeatherEffect('rainy');
+        createCardDroplets();
+    } else if (theme === 'snowy') {
+        createWeatherEffect('snowy');
+        createFrost();
+    } else if (theme === 'thunderstorm') {
+        if (userHasInteracted) thunderSound.play().catch(e => {});
+    }
+    updateToolsVisibility();
+}
+
+function getThemeClass(iconName) {
+    if (iconName === 'CLEAR_DAY') return 'sunny';
+    if (iconName === 'CLEAR_NIGHT') return 'night';
+    if (iconName.includes('CLOUDY')) return 'cloudy';
+    if (iconName === 'RAIN') return 'rainy';
+    if (iconName === 'SNOW') return 'snowy';
+    if (iconName === ('SLEET')) return 'thunderstorm';
+    if (iconName === 'FOG') return 'misty';
+    return 'cloudy';
+}
+
+function getWeatherIconName(weatherId) {
+    const isDay = new Date().getHours() >= 6 && new Date().getHours() < 20;
+    if (weatherId >= 200 && weatherId < 300) return 'SLEET';
+    if (weatherId >= 300 && weatherId < 600) return 'RAIN';
+    if (weatherId >= 600 && weatherId < 700) return 'SNOW';
+    if (weatherId >= 700 && weatherId < 800) return 'FOG';
+    if (weatherId === 800) return isDay ? 'CLEAR_DAY' : 'CLEAR_NIGHT';
+    if (weatherId === 801 || weatherId === 802) return isDay ? 'PARTLY_CLOUDY_DAY' : 'PARTLY_CLOUDY_NIGHT';
+    if (weatherId > 802) return 'CLOUDY';
+    return 'CLOUDY';
+}
+
+function stopAllSounds(){
+    allSounds.forEach(sound => {
+        if (sound) {
+            sound.pause();
+            sound.currentTime = 0;
+        }
+    });    
+}
+
+function toggleTool(tool) {
+    if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
+    if (tool === 'heater') isHeaterActive = !isHeaterActive;
+    if (tool === 'torch') isTorchActive = !isTorchActive;
+    updateToolsVisibility(currentTheme);
+}
+
+function updateToolsVisibility(theme) {
+    umbrellaButton.style.display = 'none';
+    heaterButton.style.display = 'none';
+    torchButton.style.display = 'none';
+
+    if (theme === 'rainy' || theme === 'snowy') {
+        umbrellaButton.style.display = 'block';
+    }
+    if (theme === 'snowy') {
+        heaterButton.style.display = 'block';
+    }
+    if (theme === 'night') {
+        torchButton.style.display = 'block';
+    }
+
+    umbrellaButton.classList.toggle('active', isUmbrellaActive);
+    heaterButton.classList.toggle('active', isHeaterActive);
+    torchButton.classList.toggle('active', isTorchActive);
+    bodyEl.classList.toggle('torch-on', isTorchActive && theme === 'night');
+}
+
+function animate() {
+    skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
+    effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
+
+    drawDynamicSky(skyCtx);
+    drawSunorMoon(skyCtx);
+
+    stars.forEach(s => {
+        s.update();
+        s.draw(skyCtx);
+    });
+    clouds.forEach(c => {
+        c.update();
+        c.draw(skyCtx);
+    });
+    particles.forEach(p => {
+        p.update();
+        p.draw(effectsCtx);
+    });
+
+    if (currentTheme === 'thunderstorm' && Math.random() > 0.995) {
+        effectsCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        effectsCtx.fillRect(0, 0, effectsCanvas.width, effectsCanvas.height);
+    }
+
+    if (currentTheme === 'snowy') drawFrost();
+    if (currentTheme === 'rainy') drawDroplets();
+
+    requestAnimationFrame(animate);
+}
+
+function drawDynamicSky(ctx) {
+    const hour = new Date().getHours();
+    let topColor, bottomColor;
+
+    if (hour > 20 || hour < 5) {
+        topColor = '#0f1018';
+        bottomColor = '#242B3E';
+    } else if (hour < 7) {
+        topColor = '#242B3E';
+        bottomColor = '#7B8DAF';
+    } else if (hour < 18) {
+        topColor = '#4A85D3';
+        bottomColor = '#AEC9E8';
     } else {
-        umbrellaButton.classList.remove('active');
-        umbrellaButton.title = "Interaction is OFF";
+        topColor = '#7B8DAF'; bottomColor = '#E39A82'
+    }
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, skyCanvas.height);
+    gradient.addColorStop(0, topColor);
+    gradient.addColorStop(1, bottomColor);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+}
+
+function drawSunorMoon(ctx) {
+    const now = new Date();
+    const totalMinutes = now.getHours() * 60 + now.getMinutes();
+    const sunrise = 6 * 60;
+    const sunset = 20 * 60;
+
+    ctx.save();
+    if (totalMinutes > sunrise && totalMinutes < sunset) {
+        const dayProgress = (totalMinutes - sunrise) / (sunset - sunrise);
+        const x = skyCanvas.width * dayProgress;
+        const y = skyCanvas.height * 0.6 - Math.sin(dayProgress * Math.PI) * (skyCanvas.height * 0.5);
+
+        ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+        ctx.shadowColor = 'rgba(255, 255, 200, 1)';
+        ctx.shadowBlur = 50;
+        ctx.beginPath();
+        ctx.arc(x, y, 50, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        let nightProgress;
+        if (totalMinutes >= sunset) {
+            nightProgress = (totalMinutes - sunset) / ((24 * 60 - sunset) + sunrise);
+        } else {
+            nightProgress = (totalMinutes + (24 * 60 - sunset)) / ((24 * 60 - sunset) + sunrise);
+        }
+        const x = skyCanvas.width * nightProgress;
+        const y = skyCanvas.height * 0.7 - Math.sin(nightProgress * Math.PI) * (skyCanvas.height * 0.6);
+
+        ctx.fillStyle = 'rgba(230, 230, 240, 0.9)';
+        ctx.shadowColor = 'rgba(230, 230, 240, 1)';
+        ctx.shadowBlur = 30;
+        ctx.beginPath();
+        ctx.arc(x, y, 40, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+class Cloud {
+    constructor() {
+        this.x = Math.random() * skyCanvas.width;
+        this.y = Math.random() * (skyCanvas.height * 0.4);
+        this.size = Math.random() * 50 + 50;
+        this.speed = Math.random() * 0.2 + 0.1;
+        this.opacity = Math.random() * 0.3 + 0.2;
+    }
+    update() {
+        this.x += this.speed;
+        if (this.x > skyCanvas.width + this.size) this.x = -this.size;
+    }
+    draw(ctx) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y, this.size, this.size * 0.6, 0, 0, 2 * Math.PI);
+        ctx.fill();
     }
 }
 
-function toggleTorch() {
-    isTorchActive = !isTorchActive;
-    updateTorchButton();
-}
-
-function updateTorchButton() {
-    if (isTorchActive) {
-        torchButton.classList.add('active');
-        bodyEl.classList.add('torch-on');
-    } else {
-        torchButton.classList.remove('active');
-        bodyEl.classList.remove('torch-on');
-    }
+function createClouds(theme) {
+    clouds = [];
+    let cloudCount = 0;
+    if (theme === 'cloudy' || theme === 'misty') cloudCount = 25;
+    if (theme === 'rainy' || theme === 'thunderstorm') cloudCount = 40;
+    if (theme === 'sunny' || theme === 'night') cloudCount = 10;
+    for (let i = 0; i < cloudCount; i++) clouds.push(new Cloud());
 }
 
 class Particle {
@@ -277,33 +459,21 @@ class Particle {
         this.x += this.speedX;
         this.y += this.speedY;
         
-        if (isUmbrellaActive) {
+        if (isUmbrellaActive && (currentTheme === 'rainy' || currentTheme === 'snowy')) {
             let dx = mouse.x - this.x;
             let dy = mouse.y - this.y;
             let distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance < mouse.radius) {
-                const forceDirectionX = dx / distance;
-                const forceDirectionY = dy / distance;
                 const force = (mouse.radius - distance) / mouse.radius;
-                const forceMultiplier = 10;
-                const directionX = forceDirectionX * force * this.size * forceMultiplier;
-                const directionY = forceDirectionY * force * this.size * forceMultiplier;
-                this.x -= directionX;
-                this.y -= directionY;
+                this.x -= (dx / distance) * force * 15;
+                this.y -= (dy / distance) * force * 15;
             }
         }
-        if (this.y > canvas.height + this.size || this.x > canvas.width + this.size || this.x < -this.size) {
+        if (this.y > effectsCanvas.height + this.size) {
             this.y = -this.size;
-            this.x = Math.random() * canvas.width;
+            this.x = Math.random() * effectsCanvas.width;
         }
-    }
-
-    draw() {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
     }
 }
 
@@ -313,42 +483,46 @@ class RainDrop extends Particle {
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x + this.speedX * 3, this.y + this.speedY * 3);
+        ctx.lineTo(this.x + this.speedX * 2, this.y + this.speedY * 2);
         ctx.stroke();
     }
 }
 
 class Snowflake extends Particle {
-    constructor(x, y, size, speedX, speedY) {
-        super(x, y, size, speedX, speedY);
-        this.angle = Math.random() * Math.PI * 2;
-        this.spin = Math.random() < 0.5 ? 0.005 : -0.005;
-    }
-
-    update() {
-        this.angle += this.spin;
-        this.x += Math.sin(this.angle) * 0.5;
-        super.update();
-    }
-
-    draw() {
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    draw(ctx) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
     }
 }
 
+function createWeatherEffect(type) {
+    particles = [];
+    let particleCount = type === 'rainy' ? 500 : 150;
+
+    for (let i = 0; i < particleCount; i++) {
+        let x = Math.random() * effectsCanvas.width;
+        let y = Math.random() * effectsCanvas.height;
+        
+        if (type === 'rainy') {
+            particles.push(new RainDrop(x, y, 1, 1, Math.random() * 5 + 8));
+        } else {
+            particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
+        }
+    }
+}
+
 class Star {
     constructor() {
-        this.x = Math.random() * canvas.width;
-        this.y = Math.random() * canvas.height;
+        this.x = Math.random() * skyCanvas.width;
+        this.y = Math.random() * skyCanvas.height;
         this.radius = Math.random() * 1.5;
         this.alpha = Math.random() * 0.5 + 0.5;
         this.twinkleSpeed = Math.random() * 0.015;
     }
 
-    draw() {
+    draw(ctx) {
         ctx.save();
         ctx.globalAlpha = this.alpha;
         ctx.fillStyle = 'white';
@@ -360,11 +534,15 @@ class Star {
 
     update() {
         this.alpha += this.twinkleSpeed;
-        if (this.alpha > 1 || this.alpha < 0.3) {
-            this.twinkleSpeed *= -1;
-        }
+        if (this.alpha > 1 || this.alpha < 0.3) this.twinkleSpeed *= -1;
     }
 }
+
+function createStars() {
+    stars = [];
+    for (let i = 0; i < count; i++) stars.push(new Star());
+}
+
 
 class shootingStar {
     constructor() {
@@ -398,32 +576,7 @@ class shootingStar {
     }
 }
 
-function createStars() {
-    stars = [];
-    const starCount = window.innerWidth / 8;
-    for (let i = 0; i < starCount; i++) {
-        stars.push(new Star());
-    }
-}
 
-function createWeatherEffect(effectType) {
-    particles = [];
-    let particleCount = effectType === 'rainy' ? 800 : 200;
-
-    for (let i = 0; i < particleCount; i++) {
-        let size = Math.random() * (effectType === 'rainy' ? 1.5 : 3) + 1;
-        let x = Math.random() * canvas.width;
-        let y = Math.random() * canvas.height;
-        let speedX = effectType === 'rainy' ? 2.5 : Math.random() * 0.5 - 0.25;
-        let speedY = effectType === 'rainy' ? Math.random() * 8 + 6 : Math.random() * 1.5 + 0.5;
-
-        if (effectType === 'rainy') {
-            particles.push(new RainDrop(x, y, size, speedX, speedY));
-        } else if (effectType === 'snowy') {
-            particles.push(new Snowflake(x, y, size, speedX, speedY));
-        }
-    }
-}
 
 function drawLightning() {
     if (Math.random() > 0.99) {
@@ -432,81 +585,7 @@ function drawLightning() {
     }
 }
 
-function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
 
-    if (stars.length > 0) {
-        stars.forEach(star => {
-            star.update();
-            star.draw();
-        });
-    }
-
-    if (particles.length > 0) {
-        particles.forEach(p => {
-            p.update();
-            p.draw();
-        });
-    }
-
-    if (bodyEl.classList.contains('theme-sunny')) {
-        let sunX = canvas.width / 2;
-        let sunY = 0;
-        let gradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, canvas.width / 2);
-        gradient.addColorStop(0, 'rgba(255, 255, 220, 0.2)');
-        gradient.addColorStop(0.4, 'rgba(255, 255, 220, 0.0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (bodyEl.classList.contains('theme-thunderstorm')) {
-        if (Math.random() > 0.995) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-    } else if (bodyEl.classList.contains('theme-night')) {
-        if (Math.random() < 0.01 && shootingStars.length < 3) {
-            shootingStars.push(new shootingStar());
-        }
-        shootingStars.forEach((star, index) => {
-            star.update();
-            star.draw();
-            if (!star.active) {
-                shootingStars.splice(index, 1);
-            }
-        });
-    }
-    requestAnimationFrame(animate);
-}
-
-function forceTheme(theme) {
-    bodyEl.className = `theme-${theme}`;
-    foregroundOverlay.className = `overlay-${theme}`;
-    stopAllSounds();
-    particles = [];
-    stars = [];
-    bodyEl.classList.remove('show-snow-buildup');
-
-    if (theme === 'rainy') {
-        rainSound.play().catch(e => {});
-        createWeatherEffect('rainy');
-    } else if (theme === 'snowy') {
-        createWeatherEffect('snowy');
-        setTimeout(() => {
-            bodyEl.classList.add('show-snow-buildup');
-        }, 2000);
-    } else if (theme === 'thunderstorm') {
-        thunderSound.play().catch(e => {});
-    } else if (theme === 'windy') {
-        windSound.play().catch(e => {});
-    }
-    if (theme === 'night') {
-        createStars();
-        isTorchActive = true;
-    } else {
-        isTorchActive = false;
-    }
-    updateTorchButton();
-}
 
 function setThemeAndSound(weatherId) {
     const iconName = getWeatherIconName(weatherId);
@@ -515,47 +594,3 @@ function setThemeAndSound(weatherId) {
     forceTheme(theme);
 }
 
-function stopAllSounds(){
-    allSounds.forEach(sound => {
-        if (sound) {
-            sound.pause();
-            sound.currentTime = 0;
-        }
-    });    
-}
-
-function getWeatherIconName(weatherId) {
-    if (weatherId >= 200 && weatherId < 300) return 'SLEET';
-    if (weatherId >= 300 && weatherId < 600) return 'RAIN';
-    if (weatherId >= 600 && weatherId < 700) return 'SNOW';
-    if (weatherId >= 700 && weatherId < 800) return 'FOG';
-    if (weatherId === 800) {
-        const isDay = new Date().getHours() >= 6 && new Date().getHours() < 20;
-        return isDay ? 'CLEAR_DAY' : 'CLEAR_NIGHT';
-    }
-    if (weatherId === 801 || weatherId === 802) return 'PARTLY_CLOUDY_DAY';
-    if (weatherId > 802) return 'CLOUDY';
-    return 'CLOUDY';
-}
-
-function getThemeClass(iconName) {
-    if (iconName === 'CLEAR_DAY') return 'theme-sunny';
-    if (iconName === 'CLEAR_NIGHT') return 'theme-night';
-    if (iconName.includes('CLOUDY')) return 'theme-cloudy';
-    if (iconName === 'RAIN') return 'theme-rainy';
-    if (iconName === 'SNOW') return 'theme-snowy';
-    if (iconName.includes('SLEET')) return 'theme-thunderstorm';
-    if (iconName === 'FOG') return 'theme-misty';
-    return 'theme-cloudy';
-}
-
-function handleError(message) {
-    hideLoader();
-    locationEl.textContent = 'Error!';
-    descEl.textContent = message;
-    icons.set("weather-icon", "CLOUDY");
-    tempEl.textContent = '--°C';
-    feelsLikeEl.textContent = '--°C';
-    uvIndexEl.textContent = '--';
-    hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
-}
