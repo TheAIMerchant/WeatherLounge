@@ -356,7 +356,7 @@ function animate() {
         }
         shootingStars.forEach((star, index) => {
             star.update();
-            star.draw(effectsCtx);
+            star.draw(skyCtx);
             if (!star.active) {
                 shootingStars.splice(index, 1);
             }
@@ -407,7 +407,7 @@ function drawSunorMoon(ctx) {
 
         ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
         ctx.shadowColor = 'rgba(255, 255, 200, 1)';
-        ctx.shadowBlur = 50;
+        ctx.shadowBlur = 80;
         ctx.beginPath();
         ctx.arc(x, y, 50, 0, Math.PI * 2);
         ctx.fill();
@@ -454,7 +454,7 @@ class Cloud {
 function createClouds(theme) {
     clouds = [];
     let cloudCount = 0;
-    if (theme === 'cloudy' || theme === 'misty') cloudCount = 25;
+    if (theme === 'cloudy' || theme === 'misty' || theme === 'snowy') cloudCount = 25;
     if (theme === 'rainy' || theme === 'thunderstorm') cloudCount = 40;
     if (theme === 'sunny' || theme === 'night') cloudCount = 10;
     for (let i = 0; i < cloudCount; i++) clouds.push(new Cloud());
