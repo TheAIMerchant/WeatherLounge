@@ -605,7 +605,7 @@ function createCardDroplets() {
     for (let i = 0; i < 30; i++) {
         waterDroplets.push({
             x: Math.random() * cardEffectsCanvas.width / dpr,
-            y: Math.random() * cardEffectsCanvas.height / dpr;
+            y: Math.random() * cardEffectsCanvas.height / dpr,
             r: Math.random() * 1.5 + 1,
             speed: Math.random() * 0.5 + 0.2,
             life: Math.random() * 50
