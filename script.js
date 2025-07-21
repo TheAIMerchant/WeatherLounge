@@ -538,7 +538,7 @@ class Star {
     }
 }
 
-function createStars() {
+function createStars(count) {
     stars = [];
     for (let i = 0; i < count; i++) stars.push(new Star());
 }
@@ -676,4 +676,3 @@ function setThemeAndSound(weatherId) {
     const theme = getThemeClass(iconName).replace('theme-', '');
     forceTheme(theme);
 }
-
