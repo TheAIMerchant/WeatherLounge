@@ -664,7 +664,7 @@ class shootingStar {
             }
         }
     }
-    draw() {
+    draw(ctx) {
         if (this.active) {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.lineWidth = 2;
