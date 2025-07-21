@@ -38,11 +38,11 @@ icons.play();
 let currentTheme = 'night'
 let particles = [];
 let stars = [];
+let shootingStars = [];
 let clouds = [];
 let frostLines = [];
 let waterDroplets = [];
 let userHasInteracted = false;
-let shootingStars = [];
 let isUmbrellaActive = true;
 let isHeaterActive = true;
 let isTorchActive = true;
@@ -61,7 +61,7 @@ function addEventListeners() {
         if (event.key === 'Enter') handleSearch();
     });
     geoButton.addEventListener('click', handleGeolocation);
-    window.addEventListener('mouusemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('resize', setupCanvas);
 
     umbrellaButton.addEventListener('click', () => toggleTool('umbrella'));
@@ -69,7 +69,7 @@ function addEventListeners() {
     torchButton.addEventListener('click', () => toggleTool('torch'));
 
     document.getElementById('theme-tester').addEventListener('click', e => {
-        if (e.target.tagNAme === 'BUTTON') {
+        if (e.target.tagName === 'BUTTON') {
             markUserInteraction();
             forceTheme(e.target.dataset.theme);
         }
@@ -145,6 +145,7 @@ function handleGeolocation() {
 }
 
 async function fetchCoordsByCity(city) {
+    showLoader();
     const url = `/api/weather?type=geo&city=${city}`;
     try {
         const response = await fetch(url);
@@ -349,6 +350,18 @@ function animate() {
         effectsCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         effectsCtx.fillRect(0, 0, effectsCanvas.width, effectsCanvas.height);
     }
+    if (currentTheme === 'night') {
+        if (Math.random() < 0.01 && shootingStars.length < 3) {
+            shootingStars.push(new shootingStar());
+        }
+        shootingStars.forEach((star, index) => {
+            star.update();
+            star.draw(effectsCtx);
+            if (!star.active) {
+                shootingStars.splice(index, 1);
+            }
+        });
+    }
 
     if (currentTheme === 'snowy') drawFrost();
     if (currentTheme === 'rainy') drawDroplets();
@@ -478,7 +491,7 @@ class Particle {
 }
 
 class RainDrop extends Particle {
-    draw() {
+    draw(ctx) {
         ctx.strokeStyle = 'rgba(174, 194, 224, 0.5)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -593,7 +606,7 @@ function drawFrost() {
         }
         cardEffectsCtx.globalCompositeOperation = 'destination-out';
         cardEffectsCtx.beginPath();
-        cardEffectsCtx.ard(mouse.cardX, mouse.cardY, radius, 0, Math.PI * 2);
+        cardEffectsCtx.arc(mouse.cardX, mouse.cardY, radius, 0, Math.PI * 2);
         cardEffectsCtx.fill();
         cardEffectsCtx.restore();
     }
@@ -636,7 +649,7 @@ class shootingStar {
         this.reset();        
     }
     reset() {
-        this.x = Math.random() * canvas.width;
+        this.x = Math.random() * effectsCanvas.width;
         this.y = 0;
         this.len = Math.random() * 80 + 10;
         this.speed = Math.random() * 10 + 6;
@@ -646,7 +659,7 @@ class shootingStar {
         if (this.active) {
             this.x -= this.speed;
             this.y += this.speed;
-            if (this.x < 0 || this.y > canvas.height) {
+            if (this.x < 0 || this.y > effectsCanvas.height) {
                 this.active = false;
             }
         }
@@ -668,11 +681,4 @@ function drawLightning() {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-}
-
-function setThemeAndSound(weatherId) {
-    const iconName = getWeatherIconName(weatherId);
-    icons.set("weather-icon", iconName);
-    const theme = getThemeClass(iconName).replace('theme-', '');
-    forceTheme(theme);
 }
