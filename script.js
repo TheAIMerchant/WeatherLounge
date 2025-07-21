@@ -543,6 +543,93 @@ function createStars() {
     for (let i = 0; i < count; i++) stars.push(new Star());
 }
 
+function createFrost() {
+    frostLines = [];
+    const dpr = window.devicePixelRatio || 1;
+    const startPoints = 10;
+    for (let i = 0; i < startPoints; i++) {
+        frostLines.push({
+            x: Math.random() * cardEffectsCanvas.width / dpr,
+            y: Math.random() * cardEffectsCanvas.height / dpr,
+            angle: Math.random() * Math.PI * 2,
+            speed: Math.random() * 0.2 + 0.1,
+            life: 100 + Math.random() * 100
+        });
+    }
+}
+
+function drawFrost() {
+    if (Math.random() > 0.3) {
+        frostLines.forEach(line => {
+            if (line.life > 0) {
+                cardEffectsCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                cardEffectsCtx.lineWidth = 1;
+                cardEffectsCtx.beginPath();
+                cardEffectsCtx.moveTo(line.x, line.y);
+                line.x += Math.cos(line.angle) * line.speed;
+                line.y += Math.sin(line.angle) * line.speed;
+                cardEffectsCtx.lineTo(line.x, line.y);
+                cardEffectsCtx.stroke();
+
+                line.angle += (Math.random() - 0.5) * 0.5;
+                if (Math.random() > 0.99) {
+                    frostLines.push({...line, angle: line.angle + (Math.random() > 0.5 ? 1 : -1) * Math.PI / 2});
+                }
+                line.life--;
+            }
+        });
+    }
+
+    if (mouse.cardX && isHeaterActive) {
+        cardEffectsCtx.save();
+        const dpr = window.devicePixelRatio || 1;
+        const radius = 30;
+        if (isHeaterActive) {
+            const gradient = cardEffectsCtx.createRadialGradient(mouse.cardX, mouse.cardY, 0, mouse.cardX, mouse.cardY, radius * 1.5);
+            gradient.addColorStop(0, 'rgba(252, 74, 26, 0.2)');
+            gradient.addColorStop(1, 'rgba(252, 74, 26, 0)');
+            cardEffectsCtx.fillStyle = gradient;
+            cardEffectsCtx.fillRect(0, 0, cardEffectsCanvas.width / dpr, cardEffectsCanvas.height / dpr);
+        }
+        cardEffectsCtx.globalCompositeOperation = 'destination-out';
+        cardEffectsCtx.beginPath();
+        cardEffectsCtx.ard(mouse.cardX, mouse.cardY, radius, 0, Math.PI * 2);
+        cardEffectsCtx.fill();
+        cardEffectsCtx.restore();
+    }
+}
+//s
+function createCardDroplets() {
+    const dpr = window.devicePixelRatio || 1;
+    waterDroplets = [];
+    for (let i = 0; i < 30; i++) {
+        waterDroplets.push({
+            x: Math.random() * cardEffectsCanvas.width / dpr,
+            y: Math.random() * cardEffectsCanvas.height / dpr;
+            r: Math.random() * 1.5 + 1,
+            speed: Math.random() * 0.5 + 0.2,
+            life: Math.random() * 50
+        });
+    }
+}
+
+function drawDroplets() {
+    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
+    waterDroplets.forEach(d => {
+        cardEffectsCtx.beginPath();
+        cardEffectsCtx.fillStyle = 'rgba(200, 210, 220, 0.4)';
+        cardEffectsCtx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+        cardEffectsCtx.fill();
+
+        d.y += d.speed;
+        d.life--;
+        if (d.y > cardEffectsCanvas.height || d.life <= 0) {
+            d.y = 0;
+            d.x = Math.random() * cardEffectsCanvas.width;
+            d.life = Math.random() * 50;
+        }
+    });
+}
 
 class shootingStar {
     constructor() {
@@ -576,16 +663,12 @@ class shootingStar {
     }
 }
 
-
-
 function drawLightning() {
     if (Math.random() > 0.99) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 }
-
-
 
 function setThemeAndSound(weatherId) {
     const iconName = getWeatherIconName(weatherId);
