@@ -348,11 +348,6 @@ body.torch-on::before {
     color: white;
 }
 
-.theme-snowy .weather-card {
-    color: #e0e0e0;
-    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
-}
-
 .theme-thunderstorm {
     background: linear-gradient(-45deg, #232526, #414345, #000000, #3c1053);
 }

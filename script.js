@@ -20,6 +20,7 @@ const effectsCtx = effectsCanvas.getContext('2d');
 const weatherCard = document.querySelector('.weather-card');
 const cardEffectsCanvas = document.getElementById('card-effects-canvas');
 const cardEffectsCtx = cardEffectsCanvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
 
 // Tools
 const umbrellaButton = document.getElementById('umbrella-button');
@@ -77,7 +78,6 @@ function addEventListeners() {
 }
 
 function setupCanvas() {
-    const dpr = window.devicePixelRatio || 1;
     const setCanvasSize = (canvas) => {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
@@ -556,64 +556,116 @@ function createStars(count) {
     for (let i = 0; i < count; i++) stars.push(new Star());
 }
 
+class FrostCrystal {
+    constructor(x, y, angle, ctx) {
+        this.path = [{x, y}];
+        this.angle = angle;
+        this.speed = Math.random() * 0.3 + 0.1;
+        this.life = 100 + Math.random() * 150;
+        this.isFrozen = true;
+        this.meltTimer = 0;
+        this.canvasRect = ctx.canvas.getBoundingClientRect();
+    }
+    update(ctx, mouse, heatRadius, isHeaterActive) {
+        const lastPoint = this.path[this.path.length - 1];
+        if (isHeaterActive && mouse.cardX !== undefined) {
+            const dx = lastPoint.x - mouse.cardX;
+            const dy = lastPoint.y - mouse.cardY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < heatRadius) {
+                this.isFrozen = false;
+                this.meltTimer = 120;
+            }
+        }
+        if (!this.isFrozen) {
+            if (this.path.length > 1) {
+                this.path.pop();
+            }
+            this.meltTimer--;
+            if (this.meltTimer <= 0 && this.path.length < 5) {
+                this.isFrozen = true;
+            }
+        } else if(this.life > 0) {
+            const newX = lastPoint.x + Math.cos(this.angle) * this.speed;
+            const newY = lastPoint.y + Math.sin(this.angle) * this.speed;
+            if (newX < 0 || newX > this.canvasRect.width / dpr || newY < 0 || newY > this.canvasRect.height / dpr) {
+                this.life = 0;
+            } else {
+                this.path.push({x: newX, y: newY});
+                this.life--;
+                this.angle += (Math.random() - 0.5) * 0.6;
+                if (Math.random() > 0.985 && frostLines.length < 400) {
+                    const branchAngle = this.angle + (Math.random() > 0.5 ? 1 : -1) * (Math.PI / 2) * (Math.random() * 0.5 + 0.5);
+                    frostLines.push(new FrostCrystal(newX, newY,branchAngle, ctx));
+                }
+            }
+        }
+    }
+    draw(ctx) {
+        if (this.path.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(this.path[0].x, this.path[0].y);
+        for (let i = 1; i < this.path.length; i++) {
+            ctx.lineTo(this.path[i].x, this.path[i].y);
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+    }
+}
+
 function createFrost() {
     frostLines = [];
-    const dpr = window.devicePixelRatio || 1;
-    const startPoints = 10;
+    if (!cardEffectsCanvas) return;
+    const {width, height} = cardEffectsCanvas.getBoundingClientRect();
+    const startPoints = 25;
     for (let i = 0; i < startPoints; i++) {
-        frostLines.push({
-            x: Math.random() * cardEffectsCanvas.width / dpr,
-            y: Math.random() * cardEffectsCanvas.height / dpr,
-            angle: Math.random() * Math.PI * 2,
-            speed: Math.random() * 0.2 + 0.1,
-            life: 100 + Math.random() * 100
-        });
+        let x, y, angle;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) {
+            x = 0;
+            y = Math.random() * height;
+            angle = Math.random() * Math.PI - Math.PI / 2;
+        } else if (side === 1) {
+            x = width;
+            y = Math.random() * height;
+            angle = Math.random() * Math.PI  + Math.PI / 2;
+        } else if (side === 2) {
+            x = Math.random() * width;
+            y = 0;angle = Math.random() * Math.PI;
+        } else {
+            x = Math.random() * width;
+            y = height;
+            angle = Math.random() * Math.PI - Math.PI;
+        }
+        frostLines.push(new FrostCrystal(x, y, angle, cardEffectsCtx));
     }
 }
 
 function drawFrost() {
-    if (Math.random() > 0.3) {
-        frostLines.forEach(line => {
-            if (line.life > 0) {
-                cardEffectsCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                cardEffectsCtx.lineWidth = 1;
-                cardEffectsCtx.beginPath();
-                cardEffectsCtx.moveTo(line.x, line.y);
-                line.x += Math.cos(line.angle) * line.speed;
-                line.y += Math.sin(line.angle) * line.speed;
-                cardEffectsCtx.lineTo(line.x, line.y);
-                cardEffectsCtx.stroke();
-
-                line.angle += (Math.random() - 0.5) * 0.5;
-                if (Math.random() > 0.99) {
-                    frostLines.push({...line, angle: line.angle + (Math.random() > 0.5 ? 1 : -1) * Math.PI / 2});
-                }
-                line.life--;
-            }
-        });
-    }
+    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
+    
+    frostLines.forEach(crystal => {
+        crystal.update(cardEffectsCtx, mouse, 45, isHeaterActive);
+        crystal.draw(cardEffectsCtx);
+    });
 
     if (mouse.cardX && isHeaterActive) {
-        cardEffectsCtx.save();
-        const dpr = window.devicePixelRatio || 1;
-        const radius = 30;
-        if (isHeaterActive) {
-            const gradient = cardEffectsCtx.createRadialGradient(mouse.cardX, mouse.cardY, 0, mouse.cardX, mouse.cardY, radius * 1.5);
-            gradient.addColorStop(0, 'rgba(252, 74, 26, 0.2)');
-            gradient.addColorStop(1, 'rgba(252, 74, 26, 0)');
-            cardEffectsCtx.fillStyle = gradient;
-            cardEffectsCtx.fillRect(0, 0, cardEffectsCanvas.width / dpr, cardEffectsCanvas.height / dpr);
-        }
-        cardEffectsCtx.globalCompositeOperation = 'destination-out';
+        const glowRadius = 30;
+        const gradient = cardEffectsCtx.createRadialGradient(mouse.cardX, mouse.cardY, 0, mouse.cardX, mouse.cardY, glowRadius * 2);
+        gradient.addColorStop(0, 'rgba(255, 100, 50, 0.3)');
+        gradient.addColorStop(0.5, 'rgba(255, 120, 50, 0.1)');
+        gradient.addColorStop(1, 'rgba(252, 74, 26, 0)');
+        cardEffectsCtx.globalCompositeOperation = 'lighter';
+        cardEffectsCtx.fillStyle = gradient;
         cardEffectsCtx.beginPath();
-        cardEffectsCtx.arc(mouse.cardX, mouse.cardY, radius, 0, Math.PI * 2);
+        cardEffectsCtx.arc(mouse.cardX, mouse.cardY, glowRadius * 2, 0, Math.PI * 2);
         cardEffectsCtx.fill();
-        cardEffectsCtx.restore();
+        cardEffectsCtx.globalCompositeOperation = 'source-over';
     }
 }
-//s
+
 function createCardDroplets() {
-    const dpr = window.devicePixelRatio || 1;
     waterDroplets = [];
     for (let i = 0; i < 30; i++) {
         waterDroplets.push({
