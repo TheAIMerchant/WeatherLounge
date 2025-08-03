@@ -44,7 +44,7 @@ let clouds = [];
 let frostLines = [];
 let waterDroplets = [];
 let meltDrips = [];
-let heatSpots = [];
+let heatTrail = [];
 let userHasInteracted = false;
 let isUmbrellaActive = true;
 let isHeaterActive = true;
@@ -307,21 +307,13 @@ function toggleTool(tool) {
     updateToolsVisibility(currentTheme);
 }
 
-function updateToolsVisibility(theme) {
-    umbrellaButton.style.display = 'none';
-    heaterButton.style.display = 'none';
-    torchButton.style.display = 'none';
+function updateToolsVisibility() {
+    const theme = document.body.className. replace('theme-', '').split(' ')[0];
 
-    if (theme === 'rainy' || theme === 'snowy') {
-        umbrellaButton.style.display = 'block';
-    }
-    if (theme === 'snowy') {
-        heaterButton.style.display = 'block';
-    }
-    if (theme === 'night') {
-        torchButton.style.display = 'block';
-    }
-
+    umbrellaButton.style.display = 'block';
+    heaterButton.style.display = 'block';
+    torchButton.style.display = 'block';
+    
     umbrellaButton.classList.toggle('active', isUmbrellaActive);
     heaterButton.classList.toggle('active', isHeaterActive);
     torchButton.classList.toggle('active', isTorchActive);
@@ -334,6 +326,7 @@ function animate() {
 
     drawDynamicSky(skyCtx);
     drawSunorMoon(skyCtx);
+    drawUmbrellaShade(effectsCtx);
 
     stars.forEach(s => {
         s.update();
@@ -433,6 +426,20 @@ function drawSunorMoon(ctx) {
     ctx.restore();
 }
 
+function drawUmbrellaShade(ctx) {
+    if (isUmbrellaActive && currentTheme === 'sunny' && mouse.x !== undefined) {
+        const shadeRadius = 150;
+        const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, shadeRadius);
+        gradient.addColorStop(0, 'rgba(0, 10, 30, 0.2)');
+        gradient.addColorStop(1, 'rgba(0, 10, 30, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(mouse.x, mouse.y, shadeRadius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
 class Cloud {
     constructor() {
         this.x = Math.random() * skyCanvas.width;
@@ -474,19 +481,12 @@ class Particle {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        const cardRect = weatherCard.getBoundingClientRect();
-        const isSheltered = isUmbrellaActive || (mouse.y < cardRect.top && mouse.x > cardRect.left && mouse.x < cardRect.right);
+        if (isUmbrellaActive && (currentTheme === 'rainy' || currentTheme === 'snowy')) {
+            const cardRect = weatherCard.getBoundingClientRect();
 
-        if (isSheltered && (currentTheme === 'rainy' || currentTheme === 'snowy')) {
-            let dx = mouse.x - this.x;
-            let dy = mouse.y - this.y;
-            let distance = Math.sqrt(dx * dx + dy * dy);
-            let shelterRadius = isUmbrellaActive ? mouse.radius : 150;
-
-            if (distance < shelterRadius) {
-                const force = (shelterRadius - distance) / shelterRadius;
-                this.x -= (dx / distance) * force * 15;
-                this.y -= (dy / distance) * force * 15;
+            if (this.x > cardRect.left && this.x < cardRect.right && this.y > cardRect.top - 200 && this.y < cardRect.top) {
+                this.y = -this.size - 10;
+                return;
             };
         }
         
@@ -567,20 +567,25 @@ class MeltDrip {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.r = Math.random() * 1 + 1;
+        this.startY = y;
+        this.length = Math.random() * 4 + 3;
+        this.speedY = Math.random() * 0.1 + 0.1;
+        this.gravity = 0.02;
         this.life = 150;
     }
     update() {
+        this.speedY += this.gravity;
         this.y += this.speedY;
         this.life--;
     }
     draw(ctx) {
-        ctx.strokeStyle = 'rgba(220, 230, 240, 0.7)';
-        ctx.linewidth = this.r / 1.5;
+        const opacity = Math.max(0, this.life / 120);
+        ctx.strokeStyle = `rgba(220, 230, 240, ${0.6 * opacity})`;
+        ctx.lineWidth = 1.5;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x, this.y + this.speedY * 3);
+        ctx.moveTo(this.x, this.y - this.length);
+        ctx.lineTo(this.x, this.y);
         ctx.stroke();
     }
 }
@@ -604,7 +609,7 @@ class FrostCrystal {
             if (dist < heatRadius && this.isFrozen) {
                 this.isFrozen = false;
                 this.meltTimer = 120;
-                if (this.path.length > 1) {
+                if (this.path.length > 1 && Math.random() > 0.9) {
                     meltDrips.push(new MeltDrip(lastPoint.x, lastPoint.y));
                 }
             }
@@ -683,41 +688,37 @@ function drawFrost() {
     });
 
     if (isHeaterActive && mouse.cardX !== undefined) {
-        let spotFound = false;
-
-        for (const spot of heatSpots) {
-            const dx = mouse.cardX - spot.x;
-            const dy = mouse.cardY - spot.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 25) {
-                spot.intensity = Math.min(1.5, spot.intensity + 0.02);
-                spotFound = true;
-                break;
-            }
-        }
-        if (!spotFound) {
-            heatSpots.push({x: mouse.cardX, y: mouse.cardY, intensity: 0.5});
-        }
+        heatTrail.push({x: mouse.cardX, y: mouse.cardY, intensity: 1.5});
 
         cardEffectsCtx.globalCompositeOperation = 'lighter';
+        cardEffectsCtx.lineCap = 'round';
+        cardEffectsCtx.lineJoin = 'round';
+        
+        for (let i =1; i < heatTrail.length; i++) {
 
-        for (let i = heatSpots.length - 1; i >= 0; i--) {
-            const spot = heatSpots[i];
-            const glowRadius = 25 * spot.intensity;
-            const gradient = cardEffectsCtx.createRadialGradient(spot.x, spot.y, 0, spot.x, spot.y, glowRadius);
-            
-            gradient.addColorStop(0, `rgba(255, 100, 50, ${0.4 * spot.intensity})`);
-            gradient.addColorStop(1, 'rgba(252, 74, 26, 0)');
-            
-            cardEffectsCtx.fillStyle = gradient;
+            const point = heatTrail[i];
+            const prevPoint = heatTrail[i - 1];
+            const intensity = point.intensity;
+            const color = `rgba(255, 100, 50, ${0.4 * intensity})`;
+
+            cardEffectsCtx.strokeStyle = color;
+            cardEffectsCtx.lineWidth = 15 * intensity;
             cardEffectsCtx.beginPath();
-            cardEffectsCtx.arc(spot.x, spot.y, glowRadius, 0, Math.PI * 2);
-            cardEffectsCtx.fill();
-            spot.intensity -= 0.01;
-            if(spot.intensity <= 0) {
-                heatSpots.splice(i, 1);
-            }
+            cardEffectsCtx.moveTo(prevPoint.x, prevPoint.y);
+            cardEffectsCtx.lineTo(point.x, point.y);
+            cardEffectsCtx.stroke();
         }
         cardEffectsCtx.globalCompositeOperation = 'source-over';
+
+        for (let i = heatTrail.length - 1; i >= 0; i--) {
+            const point = heatTrail[i];
+            point.intensity -= 0.02;
+            if (point.intensity <= 0) {
+                heatTrail.splice(i, 1);
+            }
+        }
+    } else {
+        heatTrail = [];
     }
     meltDrips.forEach((drip, index) => {
         drip.update();
@@ -751,26 +752,40 @@ function drawDroplets() {
             const dx = d.x - mouse.cardX;
             const dy = d.y - mouse.cardY;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < 50) {
-                waterDroplets.splice(index, 1);
-                return;
+            const wipeRadius = 40;
+            if (distance < wipeRadius) {
+                d.life -= 25;
             }
         }
-
-        cardEffectsCtx.strokeStyle = 'rgba(200, 210, 220, 0.5)';
-        cardEffectsCtx.lineWidth = d.r / 2;
-        cardEffectsCtx.beginPath();
-        cardEffectsCtx.moveTo(d.x, d.y);
-        cardEffectsCtx.lineTo(d.x, d.y - d.speed * 2.5);
-        cardEffectsCtx.stroke();
 
         d.y += d.speed;
         d.life--;
 
+        const opacity = Math.min(1, d.life / 50);
+        const streakLength = d.r * 5;
+
+        const gradient = cardEffectsCtx.createLinearGradient(d.x, d.y - streakLength, d.x, d.y);
+        gradient.addColorStop(0, `rgba(210, 220, 235, 0)`);
+        gradient.addColorStop(1, `rgba(210, 220, 235, ${0.6 * opacity})`);
+        cardEffectsCtx.strokeStyle = gradient;
+        cardEffectsCtx.lineWidth = d.r * 0.75;
+        cardEffectsCtx.lineCap = 'round';
+        cardEffectsCtx.beginPath();
+        cardEffectsCtx.moveTo(d.x, d.y - streakLength);
+        cardEffectsCtx.lineTo(d.x, d.y);
+        cardEffectsCtx.stroke();
+    
         if (d.y > cardEffectsCanvas.height / dpr || d.life <= 0) {
-            d.y = 0;
-            d.x = Math.random() * cardEffectsCanvas.width / dpr;
-            d.life = Math.random() * 50 + 20;
+            waterDroplets.splice(index, 1);
+            if (waterDroplets.length < 80) {
+                waterDroplets.push({
+                    x: Math.random() * cardEffectsCanvas.width / dpr,
+                    y: Math.random() * -20,
+                    r: Math.random() * 1.5 + 1,
+                    speed: Math.random() * 1.5 + 0.5,
+                    life: Math.random() * 100 + 50
+                });
+            }
         }
     });
 }
