@@ -282,7 +282,7 @@ function setTheme(theme, instant = false, dt = null) {
 
     const colors = {
         sunny: {top: '#4A85D3', bottom: '#AEC9E8'},
-        cloudy: {top: '#607D88', bottom: '#B0BEC5'},
+        cloudy: {top: '#78909C', bottom: '#CFD8DC'},
         rainy: {top: '#455A64', bottom: '#78909C'},
         thunderstorm: {top: '#263238', bottom: '#455A64'},
         snowy: {top: '#B0BEC5', bottom: '#242B3E'},
@@ -445,7 +445,7 @@ function animate(timestamp) {
     drawStars(transitionProgress);
     drawShootingStars();
     drawCelestialBodies(transitionProgress);
-    drawClouds();
+    drawClouds(transitionProgress);
 
     handleWeatherEffects();
     drawParticles();
@@ -459,6 +459,15 @@ function animate(timestamp) {
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
+}
+
+function lerpRgb(c1, c2, amt) {
+    const [r1, g1, b1] = c1.split(',').map(Number);
+    const [r2, g2, b2] = c2.split(',').map(Number);
+    const r = Math.round(lerp(r1, r2, amt));
+    const g = Math.round(lerp(g1, g2, amt));
+    const b = Math.round(lerp(b1, b2, amt));
+    return `${r}, ${g}, ${b}`;
 }
 
 function lerpColor(c1, c2, amt) {
@@ -579,13 +588,40 @@ function drawUmbrellaShade(ctx) {
     ctx.restore();
 }
 
+function getCloudColorSet(theme, isHeavy) {
+    let color = isHeavy ? '200, 205, 210' : '255, 255, 255';
+    let opacity = isHeavy ? 0.85 : 0.7;
+
+    switch (theme) {
+        case 'night':
+            color = isHeavy ? '45, 50, 60' : '65, 70, 80';
+            opacity = isHeavy ? 0.8 : 0.65;
+            break;
+        case 'rainy':
+            color = isHeavy ? '80, 90, 100' : '110, 115, 120';
+            opacity = isHeavy ? 0.9 : 0.75;
+            break;
+        case 'thunderstorm':
+            color = isHeavy ? '50, 55, 65' : '70, 75, 85';
+            opacity = isHeavy ? 0.95 : 0.8;
+            break;
+        case 'snowy':
+             color = isHeavy ? '180, 185, 190' : '220, 225, 230';
+             opacity = 0.85;
+            break;
+    }
+    return { color, opacity };
+}
+
 class Cloud {
-    constructor(yPosition, isHeavy) {
+    constructor(yPosition, isHeavy, shouldFadeIn = false) {
         this.y = yPosition;
         this.isHeavy = isHeavy;
         this.speed = (Math.random() * 0.3 + 0.2) * (this.isHeavy ? 1.5 : 1.0);
         this.puffs = [];
-        this.alpha = 1.0;
+
+        this.alpha = shouldFadeIn ? 0 : 1.0;
+        this.isFadingIn = shouldFadeIn;
         this.isFadingOut = false;
 
         const cloudWidth = (Math.random() * 200 + 150) * (this.isHeavy ? 1.2 : 1.0);
@@ -604,27 +640,46 @@ class Cloud {
 
     update() {
         this.x += this.speed;
-        if (this.isFadingOut) {
+
+        if (this.isFadingIn) {
+            this.alpha = Math.min(1.0, this.alpha + 0.005);
+            if (this.alpha >= 1.0) {
+                this.isFadingIn = false;
+            }
+        } else if (this.isFadingOut) {
             this.alpha -= 0.003;
         }
+
         if (this.x > skyCanvas.width + 300) {
             this.x = -300;
         }
     }
 
-    draw(ctx) {
+    draw(ctx, transitionProgress) {
         if (this.alpha <= 0) return;
         ctx.save();
         ctx.globalAlpha = this.alpha;
+        
+        let baseColor, baseOpacity;
+
+        if (appState.isTransitioning && appState.previousTheme) {
+            const startSet = getCloudColorSet(appState.previousTheme, this.isHeavy);
+            const targetSet = getCloudColorSet(appState.theme, this.isHeavy);
+            baseColor = lerpRgb(startSet.color, targetSet.color, transitionProgress);
+            baseOpacity = lerp(startSet.opacity, targetSet.opacity, transitionProgress);
+        } else {
+            const currentSet = getCloudColorSet(appState.theme, this.isHeavy);
+            baseColor = currentSet.color;
+            baseOpacity = currentSet.opacity;
+        }
 
         this.puffs.forEach(puff => {
             const puffX = this.x + puff.offsetX;
             const puffY = this.y + puff.offsetY;
             const radius = puff.radius;
             const gradient = ctx.createRadialGradient(puffX, puffY, 0, puffX, puffY, radius);
-            const baseColor = this.isHeavy ? '200, 205, 210' : '255, 255, 255';
-            const baseOpacity = this.isHeavy ? 0.85 : 0.7;
             
+
             gradient.addColorStop(0, `rgba(${baseColor}, ${baseOpacity * 0.5})`);
             gradient.addColorStop(1, `rgba(${baseColor}, 0)`);
             
@@ -697,7 +752,7 @@ class LightningBolt {
     constructor(x, y, angle, depth = 0) {
         this.path = [{x, y}];
         this.angle = angle;
-        this.speed = Math.random() * 10 + 5;
+        this.speed = Math.random() * 20 + 15;
         this.life = 1.0;
         this.branches = [];
         this.depth = depth;
@@ -832,17 +887,20 @@ function createClouds(theme) {
         case 'rainy': case 'thunderstorm': targetLight = 15; targetHeavy = 25; break;
     }
 
+    const clearThemes = ['sunny', 'night'];
+    const needsFadeIn = appState.previousTheme && clearThemes.includes(appState.previousTheme) && !clearThemes.includes(theme);
+
     let currentLight = clouds.filter(c => !c.isHeavy).length;
     let currentHeavy = clouds.filter(c => c.isHeavy).length;
 
     for (let i = 0; i < (targetLight - currentLight); i++) {
-        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.4, false);
+        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.4, false, needsFadeIn);
         newCloud.x = -300 - Math.random() * 200;
         clouds.push(newCloud);
     }
 
-    for (let i = 0; i < targetLight; i++) {
-        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.3, true);
+    for (let i = 0; i < (targetHeavy - currentHeavy); i++) {
+        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.3, true, needsFadeIn);
         newCloud.x = -300 - Math.random() * 200;
         clouds.push(newCloud);
     }
@@ -864,11 +922,11 @@ function createClouds(theme) {
     clouds.sort((a, b) => a.y - b.y);
 }
 
-function drawClouds() {
+function drawClouds(progress) {
     for (let i = clouds .length - 1; i>= 0; i--) {
         const c = clouds[i];
         c.update();
-        c.draw(skyCtx);
+        c.draw(skyCtx, progress);
         if (c.alpha <= 0) {
             clouds.splice(i, 1);
         }
@@ -908,23 +966,34 @@ function handleWeatherEffects() {
     const {activeWeatherEffect} = appState;
     if (activeWeatherEffect === 'none' || appState.isTransitioning) return;
 
-    const heavyClouds = clouds.filter(c => c.isHeavy);
+    const heavyClouds = clouds.filter(c => c.isHeavy && c.alpha > 0.5);
     if (heavyClouds.length === 0) return;
 
     if (activeWeatherEffect === 'rainy') {
         if (particles.length < 400 && Math.random() > 0.2) {
             for(let i = 0; i < 3; i++) {
                 const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
-                const x = cloud.x + (Math.random() - 0.5) * 200;
-                particles.push(new RainDrop(x, cloud.y, 1.5, Math.random() * 0.4 - 0.2, Math.random() * 5 + 5));
+                if (cloud.puffs.length === 0) continue;
+
+                const puff = cloud.puffs[Math.floor(Math.random() * cloud.puffs.length)];
+                const x = cloud.x + puff.offsetX + (Math.random() - 0.5) * puff.radius * 0.8;
+                const y = cloud.y + puff.offsetY + puff.radius * 0.3;
+
+                particles.push(new RainDrop(x, y, 1.5, Math.random() * 0.4 - 0.2, Math.random() * 5 + 5));
+                
             }
         }
     } else if (activeWeatherEffect === 'snowy') {
         if (particles.length < 200 && Math.random() > 0.4) {
             for (let i = 0; i < 2; i++) {
                 const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
-                const x = cloud.x + (Math.random() - 0.5) * 200;
-                particles.push(new Snowflake(x, cloud.y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
+                if (cloud.puffs.length === 0) continue;
+
+                const puff = cloud.puffs[Math.floor(Math.random() * cloud.puffs.length)];
+                const x = cloud.x + puff.offsetX + (Math.random() - 0.5) * puff.radius;
+                const y = cloud.y + puff.offsetY + puff.radius * 0.3;
+
+                particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
             }
         }
     }
