@@ -327,8 +327,8 @@ function setTheme(theme, instant = false, dt = null) {
 
 function finaliseThemeChange() {
     stopAllSounds();
-    particles = [];
     lightningBolts = [];
+
     appState.activeWeatherEffect = 'none';
 
     switch (appState.theme) {
