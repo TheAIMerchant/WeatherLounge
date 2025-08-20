@@ -1,12 +1,19 @@
 # Weather Lounge
-> Note: this is far from completion 😂, I just thought I'd get a README mockup
-
 
 ## The Concept
-Weather Lounge is *being* designed to be a clean weather app that shows you what you need.
+The idea was to build an interactive and dynamic weather site, essentially 'gamifiying' weather. 
 
 ## Features
-1. *Empty*
+1. Weather recall - duh.
+2. 'Live' sky.
+3. Interactive weather themes, including rain and snow. 
+4. Sound.
+5. Interactive tools - and umbrella to block rain, a heater to melt 'frost' and a torch to light up the night sky.
 
-## Tech Stack
-1. Markdown😂
+## Building Blocks
+1. HTML
+2. CSS
+3. JS
+4. Icons from Skycons
+5. Data from OpenWeather API
+6. Deployed on vercel.
