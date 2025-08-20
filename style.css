@@ -1,8 +1,8 @@
 :root {
-    --card-background: rgba(15, 22, 38, 0.4);
+    --card-background: rgba(30, 40, 60, 0.35);
     --text-color: #e0e0e0;
     --text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
-    --border-color: rgba(255, 255, 255, 0.15);
+    --border-color: rgba(255, 255, 255, 0.2);
     --mouse-x: 50%;
     --mouse-y: 50%;
 }
@@ -24,7 +24,6 @@ body {
     justify-content: center;
     align-items: center;
     position: relative;
-    transition: background 1.5s ease-in-out;
 }
 
 /*Canvas + Background*/
@@ -48,7 +47,7 @@ body {
     z-index: 1;
     pointer-events: none;
     filter: brightness(1);
-    transition: filter 1.5s ease-in-out;
+    transition: filter 2.5s ease-in-out;
 }
 
 .theme-night #foreground-img,
@@ -85,6 +84,15 @@ body.torch-on::before {
     background: radial-gradient(circle 250px at var(--mouse-x) var(--mouse-y), rgba(255, 248, 220, 0.15) 0%, transparent 80%);
     pointer-events: none;
     z-index: 4;
+    transition: background 0.5s ease;
+}
+
+.theme-night.torch-on body::before {
+    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 248, 220, 0.15) 0%, rgba(255, 248, 220, 0.0) 20%);
+}
+
+.theme-sunny.torch-on::before {
+    background: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y), rgba(255, 255, 220, 0.05) 0%, transparent 80%);
 }
 
 /*Main UI*/
@@ -302,7 +310,7 @@ body.torch-on::before {
 }
 
 #theme-tester button {
-    background: transparent /*rgba(0, 0, 0, 0.2)*/;
+    background: transparent;
     border: none;
     font-size: 1.5rem;
     padding: 5px 10px;
@@ -335,7 +343,6 @@ body.torch-on::before {
     border-radius: 50%;
     color: white;
     transition: background 0.2s, transform 0.2s;
-    display: none;
 }
 
 .tool-button:hover {
@@ -346,6 +353,14 @@ body.torch-on::before {
 .tool-button.active {
     background: #007bff;
     color: white;
+}
+
+#torch-button.active {
+    background: #ffc107;
+}
+
+#heater-button.active {
+    background: #fc4a1a;
 }
 
 .theme-thunderstorm {
@@ -363,14 +378,6 @@ body.torch-on::before {
 .theme-night body::before {
     background: transparent;
     transition: background 0.5s ease;
-}
-
-.theme-night.torch-on body::before {
-    background: radial-gradient(circle at var(--mouse-x) var(--mouse-y), rgba(255, 248, 220, 0.15) 0%, rgba(255, 248, 220, 0.0) 20%);
-}
-
-.theme-sunny.torch-on::before {
-    background: radial-gradient(circle 200px at var(--mouse-x) var(--mouse-y), rgba(255, 255, 220, 0.05) 0%, transparent 80%);
 }
 
 .overlay-rainy {
@@ -405,14 +412,6 @@ body.torch-on::before {
 .overlay-misty {
     background-color: rgba(100, 100, 110, 0.2);
     backdrop-filter: brightness(0.8);
-}
-
-#torch-button.active {
-    background: #ffc107;
-}
-
-#heater-button.active {
-    background: #fc4a1a;
 }
 
 footer {

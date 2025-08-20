@@ -36,26 +36,48 @@ const allSounds = [rainSound, windSound, thunderSound];
 
 const icons = new Skycons({"color" : "white"});
 icons.play();
-let currentTheme = 'night'
+
+let appState = {
+    theme: '',
+    previousTheme: '',
+    isTransitioning: false,
+    transitionStartTime: 0,
+    transitionDuration: 5000,
+    timeOfDay: 0,
+    targetTimeOfDay: 0,
+    skyColors: {top: '#000', bottom: '#000'},
+    targetSkyColors: {top: '#000', bottom: '#000'},
+    sun: {x: 0, y: 0, size: 50 },
+    moon: {x: 0, y: 0, size: 40},
+    celestialBodyPositions: {
+        sunStartY: 0, sunEndY: 0,
+        moonStartY: 0, moonEndY: 0,
+    },
+    activeWeatherEffect: 'none',
+};
+
 let particles = [];
 let stars = [];
 let shootingStars = [];
 let clouds = [];
+let lightningBolts = [];
 let frostLines = [];
-let meltDrips = [];
+let globalMeltDrips = [];
 let heatTrail = [];
 let currentHeatPoint = {x: 0, y: 0, intensity: 0};
-let celestialBodyPosition = {x: 0, y: 0};
+
 let userHasInteracted = false;
 let isUmbrellaActive = false;
 let isHeaterActive = false;
 let isTorchActive = false;
 const mouse = {x: undefined, y: undefined, radius: 300};
+let moonTextureCanvas;
 
 window.addEventListener('DOMContentLoaded', () => {
-    setupCanvas();
+    moonTextureCanvas = createMoonTexture(128);
+    setupCanvases();
     addEventListeners();
-    forceTheme('night');
+    setTheme('night', true);
     animate();
 });
 
@@ -66,7 +88,7 @@ function addEventListeners() {
     });
     geoButton.addEventListener('click', handleGeolocation);
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('resize', setupCanvas);
+    window.addEventListener('resize', setupCanvases);
 
     umbrellaButton.addEventListener('click', () => toggleTool('umbrella'));
     heaterButton.addEventListener('click', () => toggleTool('heater'));
@@ -75,17 +97,16 @@ function addEventListeners() {
     document.getElementById('theme-tester').addEventListener('click', e => {
         if (e.target.tagName === 'BUTTON') {
             markUserInteraction();
-            forceTheme(e.target.dataset.theme);
+            setTheme(e.target.dataset.theme);
         }
     });
 }
 
-function setupCanvas() {
-    const setCanvasSize = (canvas) => {
+function setupCanvases() {
+    const setCanvasSize = (canvas, ctx) => {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        const ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
     };
 
@@ -93,8 +114,7 @@ function setupCanvas() {
     skyCanvas.height = window.innerHeight;
     effectsCanvas.width = window.innerWidth;
     effectsCanvas.height = window.innerHeight;
-    setCanvasSize(cardEffectsCanvas);
-    forceTheme(currentTheme);
+    setCanvasSize(cardEffectsCanvas, cardEffectsCtx);
 }
 
 function handleMouseMove(e) {
@@ -104,26 +124,11 @@ function handleMouseMove(e) {
     bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`);
 
     const cardRect = weatherCard.getBoundingClientRect();
-    mouse.cardX = e.clientX - cardRect.left;
-    mouse.cardY = e.clientY - cardRect.top;
+    mouse.cardX = (e.clientX - cardRect.left);
+    mouse.cardY = (e.clientY - cardRect.top);
 }
 
-function markUserInteraction() {
-    if (!userHasInteracted) {
-        userHasInteracted = true;
-    }
-}
-
-function showLoader() {
-    cardContent.classList.add('loading');
-    loader.style.display = 'block';
-}
-
-function hideLoader() {
-    cardContent.classList.remove('loading');
-    loader.style.display = 'none';
-}
-
+// API & Data handling
 function handleSearch() {
     markUserInteraction();
     const city = cityInput.value.trim();
@@ -190,6 +195,22 @@ async function fetchCityName(lat, lon) {
     }
 }
 
+function showLoader() {
+    cardContent.classList.add('loading');
+    loader.style.display = 'block';
+}
+
+function hideLoader() {
+    cardContent.classList.remove('loading');
+    loader.style.display = 'none';
+}
+
+function markUserInteraction() {
+    if (!userHasInteracted) {
+        userHasInteracted = true;
+    }
+}
+
 function updateUI(weatherData, cityName) {
     hideLoader();
     const {current, hourly} = weatherData;
@@ -199,17 +220,14 @@ function updateUI(weatherData, cityName) {
     feelsLikeEl.textContent = `${Math.round(current.feels_like)}°C`;
     uvIndexEl.textContent = current.uvi;
 
-    const iconName = getWeatherIconName(current.weather[0].id);
+    const iconName = getWeatherIconName(current.weather[0].id, current.dt);
     icons.set("weather-icon", iconName);
 
-    const theme = getThemeClass(iconName);
-    forceTheme(theme);
+    const theme = getThemeFromIcon(iconName);
+    const cityTime = new Date((current.dt + weatherData.timezone_offset) * 1000);
+    setTheme(theme, false, cityTime);
     
-    if (hourly && Array.isArray(hourly)) {
-        renderHourlyForecast(hourly);
-    } else {
-        hourlyForecastEl.innerHTML = '<p style="text-align: center; opacity: 0.7;">Hourly data not available.</p>';
-    }
+    renderHourlyForecast(hourly || []);
 }
 
 function renderHourlyForecast(hourly) {
@@ -226,7 +244,7 @@ function renderHourlyForecast(hourly) {
             <p class="temp">${Math.round(hour.temp)}°C</p>
         `;
         hourlyForecastEl.appendChild(hourDiv);
-        icons.set(iconID, getWeatherIconName(hour.weather[0].id));
+        icons.set(iconID, getWeatherIconName(hour.weather[0].id, hour.dt));
     });
 }
 
@@ -241,46 +259,111 @@ function handleError(message) {
     hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
 }
 
-function forceTheme(theme) {
-    currentTheme = theme;
-    bodyEl.className = `theme-${theme}`;
+function setTheme(theme, instant = false, dt = null) {
+    if (appState.theme === theme && !instant) return;
 
-    stopAllSounds();
-    particles = [];
-    stars = [];
-    clouds = [];
-    frostLines = [];
-    waterDroplets = [];
-    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
-    
-    createStars(theme === 'night' ? window.innerWidth / 8 : 0);
-    createClouds(theme);
-    
-    if (theme === 'rainy') {
-        if (userHasInteracted) rainSound.play().catch(e => {});
-        createWeatherEffect('rainy');
-    } else if (theme === 'snowy') {
-        createWeatherEffect('snowy');
-        createFrost();
-    } else if (theme === 'thunderstorm') {
-        if (userHasInteracted) thunderSound.play().catch(e => {});
+    appState.previousTheme = appState.theme;
+    appState.theme = theme;
+
+    if (isNight(theme) && stars.length === 0) {
+        createStars(window.innerWidth / 8);
     }
-    updateToolsVisibility();
+
+    createClouds(appState.theme);
+
+    if (appState.previousTheme === 'snowy' && appState.theme !== 'snowy') {
+        frostLines.forEach(crystal => {
+            crystal.autoMelt = true;
+        });
+    } else if (appState.theme === 'snowy' && appState.previousTheme !== 'snowy') {
+        frostLines = [];
+        createFrost();
+    }
+
+    const colors = {
+        sunny: {top: '#4A85D3', bottom: '#AEC9E8'},
+        cloudy: {top: '#607D88', bottom: '#B0BEC5'},
+        rainy: {top: '#455A64', bottom: '#78909C'},
+        thunderstorm: {top: '#263238', bottom: '#455A64'},
+        snowy: {top: '#B0BEC5', bottom: '#242B3E'},
+        night: {top: '#0f1018', bottom: '#242B3E'},
+        misty: {top: '#BOBEC5', bottom: '#CFD8DC'},
+        sunset: {top: '#F79D51', bottom: '#F27164'},
+    };
+
+    if (theme === 'sunny') {
+        appState.targetTimeOfDay = 0.5;
+    } else if (theme === 'night') {
+        appState.targetTimeOfDay = 0.0;
+    } else {
+        const date = dt || new Date();
+        const hours = date.getUTCHours();
+        const minutes = date.getUTCMinutes();
+        appState.targetTimeOfDay = (hours * 60 + minutes) / (24 * 60);
+    }
+
+    if (Math.abs(appState.targetTimeOfDay - appState.timeOfDay) > 0.5) {
+        if (appState.timeOfDay > appState.targetTimeOfDay) {
+            appState.targetTimeOfDay += 1.0;
+        }else {
+            appState.timeOfDay += 1.0;
+        }
+    }
+
+    if (instant) {
+        appState.timeOfDay = appState.targetTimeOfDay;
+        appState.skyColors = {...colors[theme]};
+        appState.targetSkyColors = {...colors[theme]};
+        appState.isTransitioning = false;
+        finaliseThemeChange();
+    } else {
+        appState.isTransitioning = true;
+        appState.transitionStartTime = performance.now();
+        appState.targetSkyColors = {...colors[theme]};
+    }
+    bodyEl.className = `theme-${theme}`;
+    updateToolsVisibility(); 
 }
 
-function getThemeClass(iconName) {
+function finaliseThemeChange() {
+    stopAllSounds();
+    particles = [];
+    lightningBolts = [];
+    appState.activeWeatherEffect = 'none';
+
+    switch (appState.theme) {
+        case 'rainy':
+        case 'thunderstorm':
+            appState.activeWeatherEffect = 'rainy';
+            fadeSound(rainSound, 0.5, 2000);
+            if (appState.theme === 'thunderstorm') fadeSound(thunderSound, 0.6, 2000);
+            break;
+        case 'snowy':
+            appState.activeWeatherEffect = 'snowy';
+            break;
+    }
+}
+
+function isNight(theme) {
+    return theme === 'night';
+}
+
+function getThemeFromIcon(iconName) {
     if (iconName === 'CLEAR_DAY') return 'sunny';
     if (iconName === 'CLEAR_NIGHT') return 'night';
     if (iconName.includes('CLOUDY')) return 'cloudy';
     if (iconName === 'RAIN') return 'rainy';
     if (iconName === 'SNOW') return 'snowy';
-    if (iconName === ('SLEET')) return 'thunderstorm';
+    if (iconName === 'SLEET') return 'thunderstorm';
     if (iconName === 'FOG') return 'misty';
     return 'cloudy';
 }
 
-function getWeatherIconName(weatherId) {
-    const isDay = new Date().getHours() >= 6 && new Date().getHours() < 20;
+function getWeatherIconName(weatherId, dt) {
+    const date = new Date(dt * 1000);
+    const hours = date.getHours();
+    const isDay = hours >= 6 && hours < 20;
+
     if (weatherId >= 200 && weatherId < 300) return 'SLEET';
     if (weatherId >= 300 && weatherId < 600) return 'RAIN';
     if (weatherId >= 600 && weatherId < 700) return 'SNOW';
@@ -292,24 +375,40 @@ function getWeatherIconName(weatherId) {
 }
 
 function stopAllSounds(){
-    allSounds.forEach(sound => {
-        if (sound) {
-            sound.pause();
-            sound.currentTime = 0;
+    allSounds.forEach(sound => fadeSound(sound, 0, 500));    
+}
+
+function fadeSound(audio, targetVolume, duration) {
+    if (!userHasInteracted && targetVolume > 0) return;
+    if (targetVolume > 0 && audio.paused) audio.play().catch(() => {});
+
+    const startVolume = audio.volume;
+    const startTime = performance.now();
+
+    function animateFade() {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        audio.volume = lerp(startVolume, targetVolume, progress);
+        if (progress < 1) {
+            requestAnimationFrame(animateFade);
+        } else {
+            if (targetVolume === 0) {
+                audio.pause();
+                audio.currentTime = 0;
+            }
         }
-    });    
+    }
+    animateFade();
 }
 
 function toggleTool(tool) {
     if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
     if (tool === 'heater') isHeaterActive = !isHeaterActive;
     if (tool === 'torch') isTorchActive = !isTorchActive;
-    updateToolsVisibility(currentTheme);
+    updateToolsVisibility(appState.theme);
 }
 
 function updateToolsVisibility() {
-    const theme = document.body.className. replace('theme-', '').split(' ')[0];
-
     umbrellaButton.style.display = 'block';
     heaterButton.style.display = 'block';
     torchButton.style.display = 'block';
@@ -320,161 +419,223 @@ function updateToolsVisibility() {
     bodyEl.classList.toggle('torch-on', isTorchActive);
 }
 
-function animate() {
+function animate(timestamp) {
     skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
     effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
 
-    drawDynamicSky(skyCtx);
-    drawSunorMoon(skyCtx);
-    drawUmbrellaShade(effectsCtx);
+    let transitionProgress = 1.0;
+    if (appState.isTransitioning) {
+        const elapsed = timestamp - appState.transitionStartTime;
+        transitionProgress = Math.min(elapsed / appState.transitionDuration, 1.0);
+        appState.timeOfDay = lerp(appState.timeOfDay, appState.targetTimeOfDay, 0.05);
 
-    stars.forEach(s => {
-        s.update();
-        s.draw(skyCtx);
-    });
-    clouds.forEach(c => {
-        c.update();
-        c.draw(skyCtx);
-    });
-    particles.forEach(p => {
-        p.update();
-        p.draw(effectsCtx);
-    });
-
-    if (currentTheme === 'thunderstorm' && Math.random() > 0.995) {
-        effectsCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        effectsCtx.fillRect(0, 0, effectsCanvas.width, effectsCanvas.height);
-    }
-    if (currentTheme === 'night') {
-        if (Math.random() < 0.01 && shootingStars.length < 3) {
-            shootingStars.push(new shootingStar());
+        if (appState.timeOfDay >= 1.0) {
+            appState.timeOfDay -= 1.0;
+            appState.targetTimeOfDay -= 1.0;
         }
-        shootingStars.forEach((star, index) => {
-            star.update();
-            star.draw(skyCtx);
-            if (!star.active) {
-                shootingStars.splice(index, 1);
-            }
-        });
+
+        if (transitionProgress >= 1.0) {
+            appState. isTransitioning = false;
+            appState.skyColors = {...appState.targetSkyColors};
+            finaliseThemeChange();
+        }
     }
 
+    drawDynamicSky(transitionProgress);
+    drawStars(transitionProgress);
+    drawShootingStars();
+    drawCelestialBodies(transitionProgress);
+    drawClouds();
+
+    handleWeatherEffects();
+    drawParticles();
+    drawLightning();
+    drawMeltDrips();
+    drawUmbrellaShade(effectsCtx);
     drawCardEffects();
+
     requestAnimationFrame(animate);
 }
 
-function drawDynamicSky(ctx) {
-    const hour = new Date().getHours();
-    let topColor, bottomColor;
-
-    if (hour > 20 || hour < 5) {
-        topColor = '#0f1018';
-        bottomColor = '#242B3E';
-    } else if (hour < 7) {
-        topColor = '#242B3E';
-        bottomColor = '#7B8DAF';
-    } else if (hour < 18) {
-        topColor = '#4A85D3';
-        bottomColor = '#AEC9E8';
-    } else {
-        topColor = '#7B8DAF'; bottomColor = '#E39A82'
-    }
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, skyCanvas.height);
-    gradient.addColorStop(0, topColor);
-    gradient.addColorStop(1, bottomColor);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
+function lerp(start, end, amt) {
+    return (1 - amt) * start + amt * end;
 }
 
-function drawSunorMoon(ctx) {
-    const now = new Date();
-    const totalMinutes = now.getHours() * 60 + now.getMinutes();
-    const sunrise = 6 * 60;
-    const sunset = 20 * 60;
+function lerpColor(c1, c2, amt) {
+    const [r1, g1, b1] = c1.match(/\w\w/g).map(h => parseInt(h, 16));
+    const [r2, g2, b2] = c2.match(/\w\w/g).map(h => parseInt(h, 16));
+    const r = Math.round(lerp(r1, r2, amt));
+    const g = Math.round(lerp(g1, g2, amt));
+    const b = Math.round(lerp(b1, b2, amt));
+    return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+}
 
-    ctx.save();
-    if (totalMinutes > sunrise && totalMinutes < sunset) {
-        const dayProgress = (totalMinutes - sunrise) / (sunset - sunrise);
-        const x = skyCanvas.width * dayProgress;
-        const y = skyCanvas.height * 0.6 - Math.sin(dayProgress * Math.PI) * (skyCanvas.height * 0.5);
-        celestialBodyPosition = {x, y};
+function drawDynamicSky(progress) {
+    const c1 = appState.isTransitioning ? appState.skyColors.top : appState.targetSkyColors.top;
+    const c2 = appState.isTransitioning ? appState.skyColors.bottom : appState.targetSkyColors.bottom;
+    
+    const topColor = lerpColor(c1, appState.targetSkyColors.top, progress);
+    const bottomColor = lerpColor(c2, appState.targetSkyColors.bottom, progress);
 
-        ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
-        ctx.shadowColor = 'rgba(255, 255, 200, 1)';
-        ctx.shadowBlur = 80;
-        ctx.beginPath();
-        ctx.arc(x, y, 50, 0, Math.PI * 2);
-        ctx.fill();
-    } else {
-        let nightProgress;
-        if (totalMinutes >= sunset) {
-            nightProgress = (totalMinutes - sunset) / ((24 * 60 - sunset) + sunrise);
-        } else {
-            nightProgress = (totalMinutes + (24 * 60 - sunset)) / ((24 * 60 - sunset) + sunrise);
-        }
-        const x_moon = skyCanvas.width * nightProgress;
-        const y_moon = skyCanvas.height * 0.7 - Math.sin(nightProgress * Math.PI) * (skyCanvas.height * 0.6);
+    const gradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
+    gradient.addColorStop(0, topColor);
+    gradient.addColorStop(1, bottomColor);
+    skyCtx.fillStyle = gradient;
+    skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
 
-        celestialBodyPosition = {x: x_moon, y: y_moon};
+}
 
-        ctx.fillStyle = 'rgba(230, 230, 240, 0.9)';
-        ctx.shadowColor = 'rgba(230, 230, 240, 1)';
-        ctx.shadowBlur = 30;
-        ctx.beginPath();
-        ctx.arc(x_moon, y_moon, 40, 0, Math.PI * 2);
-        ctx.fill();
+function drawCelestialBodies() {
+    skyCtx.save();
+
+    const time = appState.timeOfDay % 1.0;
+    const angle = time * Math.PI * 2 + (Math.PI / 2);
+
+    const centerX = skyCanvas.width / 2;
+    const centerY = skyCanvas.height * 1.0;
+
+    const radiusX = skyCanvas.width / 2 + 100;
+    const radiusY = skyCanvas.height * 0.9;
+
+    const x = centerX + Math.cos(angle) * radiusX;
+    const y = centerY + Math.sin(angle) * radiusY;
+
+    if (y < centerY) {
+        appState.sun.x = x;
+        appState.sun.y = y;
+
+        const sunGradient = skyCtx.createRadialGradient(appState.sun.x, appState.sun.y, 0, appState.sun.x, appState.sun.y, appState.sun.size * 1.5);
+        sunGradient.addColorStop(0, 'rgba(255, 255, 245, 1)');
+        sunGradient.addColorStop(0.5, 'rgba(255, 255, 220, 0.9)');
+        sunGradient.addColorStop(1, 'rgba(255, 220, 180, 0)');
+        skyCtx.fillStyle = sunGradient;
+        skyCtx.beginPath();
+        skyCtx.arc(appState.sun.x, appState.sun.y, appState.sun.size * 1.5, 0, Math.PI * 2);
+        skyCtx.fill();
     }
-    ctx.restore();
+    const moonAngle = angle + Math.PI;
+    const moonX = centerX + Math.cos(moonAngle) * radiusX;
+    const moonY = centerY + Math.sin(moonAngle) * radiusY;
+
+    if (moonY < centerY) {
+        appState.moon.x = moonX;
+        appState.moon.y = moonY;
+        skyCtx.shadowColor = 'rgba(230, 230, 240, 0.7)';
+        skyCtx.shadowBlur = 30;
+        skyCtx.drawImage(moonTextureCanvas, appState.moon.x - appState.moon.size, appState.moon.y - appState.moon.size, appState.moon.size * 2, appState.moon.size * 2);
+    }
+    skyCtx.restore();
+}
+
+function createMoonTexture(size) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = 'rgba(230, 230, 240, 0.9)';
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (let i = 0; i< 50; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = Math.random() * (size / 20) + 1;
+        if (Math.hypot(x - size / 2, y - size / 2) < size / 2 - r) {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+    return canvas;
 }
 
 function drawUmbrellaShade(ctx) {
-    if (!isUmbrellaActive || currentTheme !== 'sunny' || mouse.x === undefined) {
+    if (!isUmbrellaActive || appState.theme !== 'sunny' || mouse.x === undefined || appState.sun.y <= 0) {
         return;
     }
 
-    const dx = mouse.x - celestialBodyPosition.x;
-    const dy = mouse.y - celestialBodyPosition.y;
+    const dx = mouse.x - appState.sun.x;
+    const dy = mouse.y - appState.sun.y;
     const angle = Math.atan2(dy, dx);
-    const sunHeightFactor = 1 - (celestialBodyPosition.y / (skyCanvas.height * 0.7));
-    const shadowLength = 200 * sunHeightFactor;
-    const shadowCenterX = mouse.x + Math.cos(angle) * (shadowLength / 2);
-    const shadowCenterY = mouse.y + Math.sin(angle) * (shadowLength / 2);
+    const sunHeightFactor = Math.max(0, 1 - (appState.y / (skyCanvas.height * 0.7)));
+    const shadowLength = 300 * sunHeightFactor;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(0, 10, 30, 0.25)';
-    ctx.beginPath();
-    ctx.ellipse(shadowCenterX, shadowCenterY, shadowLength / 2, 75, angle, 0, Math.PI * 2);
-    ctx.fill();
+
+    for (let i = 0; i < 5; i++) {
+        const progression = i / 4;
+        const offsetX = Math.cos(angle) * (shadowLength * progression);
+        const offsetY = Math.sin(angle) * (shadowLength * progression);
+        const radiusX = 100 - (progression * 50);
+        const radiusY = 75 - (progression * 40);
+
+        ctx.fillStyle = `rgba(0, 10, 30, ${0.05 * (1 - progression)})`;
+        ctx.beginPath();
+        ctx.ellipse(mouse.x + offsetX, mouse.y + offsetY, radiusX, radiusY, angle, 0, Math.PI * 2);
+        ctx.fill();
+    }
     ctx.restore();
 }
 
 class Cloud {
-    constructor() {
+    constructor(yPosition, isHeavy) {
+        this.y = yPosition;
+        this.isHeavy = isHeavy;
+        this.speed = (Math.random() * 0.3 + 0.2) * (this.isHeavy ? 1.5 : 1.0);
+        this.puffs = [];
+        this.alpha = 1.0;
+        this.isFadingOut = false;
+
+        const cloudWidth = (Math.random() * 200 + 150) * (this.isHeavy ? 1.2 : 1.0);
+        const cloudHeight = cloudWidth * (Math.random() * 0.3 + 0.4);
         this.x = Math.random() * skyCanvas.width;
-        this.y = Math.random() * (skyCanvas.height * 0.4);
-        this.size = Math.random() * 50 + 50;
-        this.speed = Math.random() * 0.2 + 0.1;
-        this.opacity = Math.random() * 0.3 + 0.2;
+
+        const puffCount = Math.floor(Math.random() * 5 + 8);
+        for (let i = 0; i < puffCount; i++) {
+            this.puffs.push({
+                offsetX: (Math.random() - 0.5) * cloudWidth,
+                offsetY: (Math.random() - 0.5) * cloudHeight,
+                radius: (Math.random() * 0.4 + 0.6) * (cloudWidth / 3.5),
+            });
+        }
     }
+
     update() {
         this.x += this.speed;
-        if (this.x > skyCanvas.width + this.size) this.x = -this.size;
+        if (this.isFadingOut) {
+            this.alpha -= 0.003;
+        }
+        if (this.x > skyCanvas.width + 300) {
+            this.x = -300;
+        }
     }
-    draw(ctx) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
-        ctx.beginPath();
-        ctx.ellipse(this.x, this.y, this.size, this.size * 0.6, 0, 0, 2 * Math.PI);
-        ctx.fill();
-    }
-}
 
-function createClouds(theme) {
-    clouds = [];
-    let cloudCount = 0;
-    if (theme === 'cloudy' || theme === 'misty' || theme === 'snowy') cloudCount = 25;
-    if (theme === 'rainy' || theme === 'thunderstorm') cloudCount = 40;
-    if (theme === 'sunny' || theme === 'night') cloudCount = 10;
-    for (let i = 0; i < cloudCount; i++) clouds.push(new Cloud());
+    draw(ctx) {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+
+        this.puffs.forEach(puff => {
+            const puffX = this.x + puff.offsetX;
+            const puffY = this.y + puff.offsetY;
+            const radius = puff.radius;
+            const gradient = ctx.createRadialGradient(puffX, puffY, 0, puffX, puffY, radius);
+            const baseColor = this.isHeavy ? '200, 205, 210' : '255, 255, 255';
+            const baseOpacity = this.isHeavy ? 0.85 : 0.7;
+            
+            gradient.addColorStop(0, `rgba(${baseColor}, ${baseOpacity * 0.5})`);
+            gradient.addColorStop(1, `rgba(${baseColor}, 0)`);
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(puffX, puffY, radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        ctx.restore();
+    }
 }
 
 class Particle {
@@ -484,15 +645,18 @@ class Particle {
         this.size = size;
         this.speedX = speedX;
         this.speedY = speedY;
+        this.life = 1.0;
     }
     update() {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        if (isUmbrellaActive && (currentTheme === 'rainy' || currentTheme === 'snowy') && mouse.x !== undefined) {
+        const isRainyTheme = appState.theme === 'rainy' || appState.theme === 'thunderstorm';
+
+        if (isUmbrellaActive && (isRainyTheme || appState.theme === 'snowy') && mouse.x !== undefined) {
             let dx = mouse.x - this.x;
             let dy = mouse.y - this.y;
-            let distance = Math.sqrt(dx * dx + dy * dy);
+            let distance = Math.hypot(dx, dy);
             let shelterRadius = 150;
             
             if (distance < shelterRadius) {
@@ -504,15 +668,14 @@ class Particle {
         }
         
         if (this.y > effectsCanvas.height + this.size) {
-            this.y = -this.size;
-            this.x = Math.random() * effectsCanvas.width;
+            this.life = 0;
         }
     }
 }
 
 class RainDrop extends Particle {
     draw(ctx) {
-        ctx.strokeStyle = 'rgba(174, 194, 224, 0.5)';
+        ctx.strokeStyle = `rgba(174, 194, 224, ${0.5 * this.life})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(this.x, this.y);
@@ -523,109 +686,93 @@ class RainDrop extends Particle {
 
 class Snowflake extends Particle {
     draw(ctx) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * this.life})`;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx.fill();
     }
 }
 
-function createWeatherEffect(type) {
-    particles = [];
-    let particleCount = type === 'rainy' ? 500 : 150;
+class LightningBolt {
+    constructor(x, y, angle, depth = 0) {
+        this.path = [{x, y}];
+        this.angle = angle;
+        this.speed = Math.random() * 10 + 5;
+        this.life = 1.0;
+        this.branches = [];
+        this.depth = depth;
+        this.isGenerated = false;
+        this.generationSteps = 60;
+    }
 
-    for (let i = 0; i < particleCount; i++) {
-        let x = Math.random() * effectsCanvas.width;
-        let y = Math.random() * effectsCanvas.height;
-        
-        if (type === 'rainy') {
-            particles.push(new RainDrop(x, y, 1, 1, Math.random() * 5 + 8));
-        } else {
-            particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
+    extend() {
+        if (this.isGenerated) {
+            this.branches.forEach(b => b.extend());
+            return;
         }
+
+        let lastPoint = this.path[this.path.length - 1];
+        const newX = lastPoint.x + Math.cos(this.angle) * this.speed;
+        const newY = lastPoint.y + Math.sin(this.angle) * this.speed;
+
+        if (newY > skyCanvas.height + 50 || this.path.length >= this.generationSteps) {
+            this.isGenerated = true;
+            return;
+        }
+
+        this.path.push({x: newX, y: newY});
+        this.angle += (Math.random() - 0.5) * 0.8;
+
+        if (Math.random() > 0.96 && this.depth < 3) {
+            const branchAngle = this.angle + (Math.random() > 0.5 ? 1 : -1) * (Math.PI / 3);
+            const newBranch = new LightningBolt(newX, newY, branchAngle, this.depth + 1);
+            this.branches.push(newBranch);
+        }
+    }
+
+    update() {
+        this.life -= 0.02;
+    }
+
+    draw(ctx) {
+        if (this.path.length < 2 || this.life <= 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = this.life;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = this.depth > 0 ? 1.5 : 3;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 1)';        
+        ctx.shadowColor = 'rgba(255, 255, 255, 1)';
+        ctx.shadowBlur = this.depth > 0 ? 10 : 20;
+
+        ctx.beginPath();
+        ctx.moveTo(this.path[0].x, this.path[0].y);
+        for (let i = 1; i < this.path.length; i++) {
+            ctx.lineTo(this.path[i].x, this.path[i].y);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        this.branches.forEach(branch => branch.draw(ctx));
     }
 }
-
-function drawCardEffects() {
-    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
-    if (currentTheme === 'snowy') {
-        drawFrost();
-    }
-    if (isHeaterActive) {
-        drawCardHeat();
-    }
-}
-
-function drawCardHeat() {
-    let heatMultiplier = 1.0;
-    if (currentTheme === 'sunny') heatMultiplier = 1.5;
-    else if (currentTheme === 'cloudy') heatMultiplier = 1.2;
-    
-    const cardRect = weatherCard.getBoundingClientRect();
-    const isMouseOverCard = mouse.x > cardRect.left && mouse.x < cardRect.right && mouse.y > cardRect.top && mouse.y < cardRect.bottom;
-
-    if (isHeaterActive && isMouseOverCard) {
-        currentHeatPoint.x = mouse.cardX;
-        currentHeatPoint.y = mouse.cardY;
-        currentHeatPoint.intensity = Math.min(1.0, currentHeatPoint.intensity + (0.04 * heatMultiplier));
-        if (heatTrail.length === 0 || Math.hypot(currentHeatPoint.x - heatTrail[heatTrail.length-1].x, currentHeatPoint.y - heatTrail[heatTrail.length-1].y) > 5) {
-            heatTrail.push({...currentHeatPoint});
-        } else {
-            currentHeatPoint.intensity = Math.max(0, currentHeatPoint.intensity - 0.03);
-        }
-
-        cardEffectsCtx.globalCompositeOperation = 'lighter';
-
-        if (currentHeatPoint.intensity > 0) {
-            const glowRadius = 30 * currentHeatPoint.intensity;
-            const gradient = cardEffectsCtx.createRadialGradient(currentHeatPoint.x, currentHeatPoint.y, 0, currentHeatPoint.x, currentHeatPoint.y, glowRadius);
-            gradient.addColorStop(0, `rgba(255, 120, 0, ${0.6 * currentHeatPoint.intensity})`);
-            gradient.addColorStop(0.5, `rgba(255, 60, 0, ${0.3 * currentHeatPoint.intensity})`);
-            gradient.addColorStop(1, 'rgba(252, 74, 26, 0');
-
-            cardEffectsCtx.fillStyle = gradient;
-            cardEffectsCtx.beginPath();
-            cardEffectsCtx.arc(currentHeatPoint.x, currentHeatPoint.y, glowRadius, 0, Math.PI * 2);
-            cardEffectsCtx.fill();
-        }
-
-        cardEffectsCtx.lineCap = 'round';
-        cardEffectsCtx.lineJoin = 'round';
-        for (let i = 1; i < heatTrail.length; i++) {
-            const point = heatTrail[i];
-            const prevPoint = heatTrail[i - 1];
-            cardEffectsCtx.strokeStyle = `rgba(255, 100, 50, ${0.4 * point.intensity})`;
-            cardEffectsCtx.lineWidth = 15 * point.intensity;
-            cardEffectsCtx.beginPath();
-            cardEffectsCtx.moveTo(prevPoint.x, prevPoint.y);
-            cardEffectsCtx.lineTo(point.x, point.y);
-            cardEffectsCtx.stroke();
-        }
-
-        cardEffectsCtx.globalCompositeOperation = 'source-over';
-
-        for (let i = heatTrail.length - 1; i >= 0; i--) {
-            heatTrail[i].intensity -= 0.02;
-            if (heatTrail[i].intensity <= 0) {
-                heatTrail.splice(i, 1);
-            }
-        }
-    }
-}
-
 
 class Star {
     constructor() {
         this.x = Math.random() * skyCanvas.width;
         this.y = Math.random() * skyCanvas.height;
         this.radius = Math.random() * 1.5;
-        this.alpha = Math.random() * 0.5 + 0.5;
-        this.twinkleSpeed = Math.random() * 0.015;
+        this.initialAlpha = Math.random() * 0.5 + 0.5;
+        this.alpha = Math.random() * this.initialAlpha;
+        this.twinkleSpeed = (Math.random() - 0.5) * 0.015;
     }
 
-    draw(ctx) {
+    draw(ctx, alphaMultiplier) {
+        const currentAlpha = this.alpha * alphaMultiplier;
+        if (currentAlpha <= 0) return;
+
         ctx.save();
-        ctx.globalAlpha = this.alpha;
+        ctx.globalAlpha = currentAlpha;
         ctx.fillStyle = 'white';
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -635,13 +782,258 @@ class Star {
 
     update() {
         this.alpha += this.twinkleSpeed;
-        if (this.alpha > 1 || this.alpha < 0.3) this.twinkleSpeed *= -1;
+        if (this.alpha > this.initialAlpha || this.alpha < 0.3) {
+            this.twinkleSpeed *= -1;
+            this.alpha = Math.max(0.3, Math.min(this.alpha, this.initialAlpha));
+        }
+    }
+}
+
+class shootingStar {
+    constructor() {
+        this.reset();        
+    }
+    reset() {
+        this.x = Math.random() * effectsCanvas.width * 1.5;
+        this.y = -20;
+        this.len = Math.random() * 80 + 10;
+        this.speed = Math.random() * 10 + 6;
+        this.active = true;
+    }
+    update() {
+        if (this.active) {
+            this.x -= this.speed;
+            this.y += this.speed;
+            if (this.x < -this.len || this.y > effectsCanvas.height + this.len) {
+                this.active = false;
+            }
+        }
+    }
+    draw(ctx) {
+        if (this.active) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.len, this.y - this.len);
+            ctx.stroke();
+        }
+    }
+}
+
+function createClouds(theme) {
+    let targetLight = 0;
+    let targetHeavy = 0;
+    switch (theme) {
+        case 'sunny': targetLight = 8; break;
+        case 'night': targetLight = 5; break;
+        case 'cloudy': targetLight = 20; targetHeavy = 15; break;
+        case 'misty': case 'snowy': targetLight = 15; targetHeavy = 20; break;
+        case 'rainy': case 'thunderstorm': targetLight = 15; targetHeavy = 25; break;
+    }
+
+    let currentLight = clouds.filter(c => !c.isHeavy).length;
+    let currentHeavy = clouds.filter(c => c.isHeavy).length;
+
+    for (let i = 0; i < (targetLight - currentLight); i++) {
+        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.4, false);
+        newCloud.x = -300 - Math.random() * 200;
+        clouds.push(newCloud);
+    }
+
+    for (let i = 0; i < targetLight; i++) {
+        const newCloud = new Cloud(Math.random() * skyCanvas.height * 0.3, true);
+        newCloud.x = -300 - Math.random() * 200;
+        clouds.push(newCloud);
+    }
+
+    let excessLight = currentLight - targetLight;
+    let excessHeavy = currentHeavy - targetHeavy;
+
+    for (const cloud of clouds) {
+        if (excessLight > 0 && !cloud.isHeavy && !cloud.isFadingOut) {
+            cloud.isFadingOut = true;
+            excessLight--;
+        }
+        if (excessHeavy > 0 && cloud.isHeavy && !cloud.isFadingOut) {
+            cloud.isFadingOut = true;
+            excessHeavy--;
+        }
+    }
+
+    clouds.sort((a, b) => a.y - b.y);
+}
+
+function drawClouds() {
+    for (let i = clouds .length - 1; i>= 0; i--) {
+        const c = clouds[i];
+        c.update();
+        c.draw(skyCtx);
+        if (c.alpha <= 0) {
+            clouds.splice(i, 1);
+        }
     }
 }
 
 function createStars(count) {
     stars = [];
     for (let i = 0; i < count; i++) stars.push(new Star());
+}
+
+function drawStars(progress) {
+    const targetAlpha = isNight(appState.theme) ? 1.0 : 0.0;
+    const startAlpha = isNight(appState.previousTheme) ? 1.0 : 0.0;
+    let alphaMultiplier = lerp(startAlpha, targetAlpha, progress);
+
+    stars.forEach(s => {
+        s.update();
+        s.draw(skyCtx, alphaMultiplier);
+    });
+}
+
+function drawShootingStars() {
+    if (isNight(appState.theme) && !appState.isTransitioning) {
+        if (Math.random() < 0.005 && shootingStars.length < 3) {
+            shootingStars.push(new shootingStar());
+        }
+    }
+    shootingStars.forEach((star, index) => {
+        star.update();
+        star.draw(skyCtx);
+        if (!star.active) shootingStars.splice(index, 1);
+    });
+}
+
+function handleWeatherEffects() {
+    const {activeWeatherEffect} = appState;
+    if (activeWeatherEffect === 'none' || appState.isTransitioning) return;
+
+    const heavyClouds = clouds.filter(c => c.isHeavy);
+    if (heavyClouds.length === 0) return;
+
+    if (activeWeatherEffect === 'rainy') {
+        if (particles.length < 400 && Math.random() > 0.2) {
+            for(let i = 0; i < 3; i++) {
+                const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
+                const x = cloud.x + (Math.random() - 0.5) * 200;
+                particles.push(new RainDrop(x, cloud.y, 1.5, Math.random() * 0.4 - 0.2, Math.random() * 5 + 5));
+            }
+        }
+    } else if (activeWeatherEffect === 'snowy') {
+        if (particles.length < 200 && Math.random() > 0.4) {
+            for (let i = 0; i < 2; i++) {
+                const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
+                const x = cloud.x + (Math.random() - 0.5) * 200;
+                particles.push(new Snowflake(x, cloud.y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
+            }
+        }
+    }
+}
+
+function drawParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.update();
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        } else {
+            p.draw(effectsCtx);
+        }
+    }
+}
+
+function drawLightning() {
+    if (appState.theme === 'thunderstorm' && Math.random() > 0.998 && lightningBolts.length < 1) {
+        effectsCtx.fillStyle = 'rgba(200, 220, 255, 0.6)';
+        effectsCtx.fillRect(0, 0, effectsCanvas.width, effectsCanvas.height);
+
+        const heavyClouds = clouds.filter(c => c.isHeavy);
+        if (heavyClouds.length > 0) {
+            const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
+            const bolt = new LightningBolt(cloud.x, cloud.y, Math.PI / 2);
+            lightningBolts.push(bolt);
+        }
+    }
+    for (let i = lightningBolts.length - 1; i >= 0; i--) {
+        const bolt = lightningBolts[i];
+
+        bolt.extend();
+        bolt.update();
+
+        if (bolt.life <= 0) {
+            lightningBolts.splice(i, 1);
+        } else {
+            bolt.draw(effectsCtx);
+        }
+    }
+}
+
+function drawCardEffects() {
+    cardEffectsCtx.clearRect(0, 0, cardEffectsCanvas.width, cardEffectsCanvas.height);
+    if (appState.theme === 'snowy' || frostLines.length > 0) {
+        drawFrost();
+    }
+    if (isHeaterActive) {
+        drawCardHeat();
+    }
+}
+
+function drawCardHeat() {
+    let heatMultiplier = 1.0;
+    if (appState.theme === 'sunny') heatMultiplier = 1.5;
+    else if (appState.theme === 'cloudy') heatMultiplier = 1.2;
+    
+    const cardRect = weatherCard.getBoundingClientRect();
+    const isMouseOverCard = mouse.x > cardRect.left && mouse.x < cardRect.right && mouse.y > cardRect.top && mouse.y < cardRect.bottom;
+
+    if (isMouseOverCard) {
+        currentHeatPoint.x = mouse.cardX;
+        currentHeatPoint.y = mouse.cardY;
+        currentHeatPoint.intensity = Math.min(1.0, currentHeatPoint.intensity + (0.04 * heatMultiplier));
+        if (heatTrail.length === 0 || Math.hypot(currentHeatPoint.x - heatTrail[heatTrail.length-1].x, currentHeatPoint.y - heatTrail[heatTrail.length-1].y) > 5) {
+            heatTrail.push({...currentHeatPoint});
+        }
+    }
+
+    if (currentHeatPoint.intensity > 0) {
+        currentHeatPoint.intensity = Math.max(0, currentHeatPoint.intensity - 0.03);
+    }
+    cardEffectsCtx.globalCompositeOperation = 'lighter';
+
+    if (currentHeatPoint.intensity > 0) {
+        const glowRadius = 30 * currentHeatPoint.intensity;
+        const gradient = cardEffectsCtx.createRadialGradient(currentHeatPoint.x, currentHeatPoint.y, 0, currentHeatPoint.x, currentHeatPoint.y, glowRadius);
+        gradient.addColorStop(0, `rgba(255, 120, 0, ${0.6 * currentHeatPoint.intensity})`);
+        gradient.addColorStop(0.5, `rgba(255, 60, 0, ${0.3 * currentHeatPoint.intensity})`);
+        gradient.addColorStop(1, 'rgba(252, 74, 26, 0');
+
+        cardEffectsCtx.fillStyle = gradient;
+        cardEffectsCtx.beginPath();
+        cardEffectsCtx.arc(currentHeatPoint.x, currentHeatPoint.y, glowRadius, 0, Math.PI * 2);
+        cardEffectsCtx.fill();
+    }
+
+    cardEffectsCtx.lineCap = 'round';
+    cardEffectsCtx.lineJoin = 'round';
+    for (let i = 1; i < heatTrail.length; i++) {
+        const point = heatTrail[i];
+        const prevPoint = heatTrail[i - 1];
+        cardEffectsCtx.strokeStyle = `rgba(255, 100, 50, ${0.4 * point.intensity})`;
+        cardEffectsCtx.lineWidth = 15 * point.intensity;
+        cardEffectsCtx.beginPath();
+        cardEffectsCtx.moveTo(prevPoint.x, prevPoint.y);
+        cardEffectsCtx.lineTo(point.x, point.y);
+        cardEffectsCtx.stroke();
+    }
+
+    cardEffectsCtx.globalCompositeOperation = 'source-over';
+
+    for (let i = heatTrail.length - 1; i >= 0; i--) {
+        heatTrail[i].intensity -= 0.02;
+        if (heatTrail[i].intensity <= 0) {
+            heatTrail.splice(i, 1);
+        }
+    }
 }
 
 class MeltDrip {
@@ -666,7 +1058,7 @@ class MeltDrip {
         gradient.addColorStop(1, `rgba(210, 220, 235, ${0.6 * opacity})`);
 
         ctx.strokeStyle = gradient;
-        ctx.linewidth = this.r * 0.75;
+        ctx.lineWidth = this.r * 0.75;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(this.x, this.y - streakLength);
@@ -684,30 +1076,45 @@ class FrostCrystal {
         this.isFrozen = true;
         this.meltTimer = 0;
         this.canvasRect = ctx.canvas.getBoundingClientRect();
+        this.autoMelt = false;
+        this.initialLength = 0;
+        this.dripCooldown = 0;
     }
-    update(ctx, mouse, heatRadius, isHeaterActive) {
+    update(ctx, mouse, heatRadius, isHeaterActive, isThemeSnowy) {
         const lastPoint = this.path[this.path.length - 1];
-        if (isHeaterActive && mouse.cardX !== undefined) {
-            const dx = lastPoint.x - mouse.cardX;
-            const dy = lastPoint.y - mouse.cardY;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < heatRadius && this.isFrozen) {
-                this.isFrozen = false;
-                this.meltTimer = 120;
-                if (this.path.length > 1 && Math.random() > 0.8) {
-                    meltDrips.push(new MeltDrip(lastPoint.x, lastPoint.y));
-                }
-            }
+
+        let shouldStartMelting = (isHeaterActive && mouse.cardX !== undefined && Math.hypot(lastPoint.x - mouse.cardX, lastPoint.y - mouse.cardY) < heatRadius) || this.autoMelt;
+
+        if (this.isFrozen && shouldStartMelting) {
+            this.isFrozen = false;
+            this.meltTimer = 180;
+            this.initialLength = this.path.length;
         }
+
+        if (this.dripCooldown > 0) {
+            this.dripCooldown--;
+        }
+
         if (!this.isFrozen) {
             if (this.path.length > 1) {
+                this.meltTimer--;
                 this.path.pop();
+
+                if (this.dripCooldown <= 0 && Math.random() < 0.3) {
+                 const dripPoint = this.path[this.path.length - 1];
+                 const cardRect = weatherCard.getBoundingClientRect();
+                 const globalX = cardRect.left + dripPoint.x;
+                 const globalY = cardRect.top + dripPoint.y;
+                 globalMeltDrips.push(new MeltDrip(globalX, globalY));
+
+                 this.dripCooldown = 30 + Math.random() * 60;
+                }
+
+            } else {
+                this.life = 0;
             }
-            this.meltTimer--;
-            if (this.meltTimer <= 0 && this.path.length < 5) {
-                this.isFrozen = true;
-            }
-        } else if(this.life > 0) {
+            
+        } else if (isThemeSnowy && this.life > 0) {
             const newX = lastPoint.x + Math.cos(this.angle) * this.speed;
             const newY = lastPoint.y + Math.sin(this.angle) * this.speed;
             if (newX < 0 || newX > this.canvasRect.width / dpr || newY < 0 || newY > this.canvasRect.height / dpr) {
@@ -718,7 +1125,7 @@ class FrostCrystal {
                 this.angle += (Math.random() - 0.5) * 0.6;
                 if (Math.random() > 0.985 && frostLines.length < 400) {
                     const branchAngle = this.angle + (Math.random() > 0.5 ? 1 : -1) * (Math.PI / 2) * (Math.random() * 0.5 + 0.5);
-                    frostLines.push(new FrostCrystal(newX, newY,branchAngle, ctx));
+                    frostLines.push(new FrostCrystal(newX, newY, branchAngle, ctx));
                 }
             }
         }
@@ -747,18 +1154,19 @@ function createFrost() {
         if (side === 0) {
             x = 0;
             y = Math.random() * height;
-            angle = Math.random() * Math.PI - Math.PI / 2;
+            angle = Math.random() * Math.PI - Math.PI / 4;
         } else if (side === 1) {
             x = width;
             y = Math.random() * height;
-            angle = Math.random() * Math.PI  + Math.PI / 2;
+            angle = Math.random() * Math.PI / 2 + Math.PI / 2 + Math.PI / 4;
         } else if (side === 2) {
             x = Math.random() * width;
-            y = 0;angle = Math.random() * Math.PI;
+            y = 0;
+            angle = Math.random() * Math.PI / 2 + Math.PI / 4;
         } else {
             x = Math.random() * width;
             y = height;
-            angle = Math.random() * Math.PI - Math.PI;
+            angle = Math.random() * Math.PI / 2 - Math.PI - Math.PI / 4;
         }
         frostLines.push(new FrostCrystal(x, y, angle, cardEffectsCtx));
     }
@@ -766,58 +1174,58 @@ function createFrost() {
 
 function drawFrost() {
     let heatMultiplier = 1.0;
-    if (currentTheme === 'sunny') heatMultiplier = 1.5;
-    else if (currentTheme === 'cloudy') heatMultiplier = 1.2;
+    if (appState.theme === 'sunny') heatMultiplier = 1.5;
+    else if (appState.theme === 'cloudy') heatMultiplier = 1.2;
+    else if (appState.theme === 'snowy') heatMultiplier = 1.0;
 
-    frostLines.forEach(crystal => {
-        crystal.update(cardEffectsCtx, mouse, 45, isHeaterActive);
+    const heatRadius = 45 * heatMultiplier;
+    const isThemeSnowy = appState.theme === 'snowy';
+
+    for (let i = frostLines.length -1; i>= 0; i--) {
+        const crystal = frostLines[i];
+        crystal.update(cardEffectsCtx, mouse, heatRadius, isHeaterActive, isThemeSnowy);
         crystal.draw(cardEffectsCtx);
-    });
-
-    meltDrips.forEach((drip, index) => {
-        drip.update();
-        drip.draw(cardEffectsCtx);
-        if (drip.y > cardEffectsCanvas.height / dpr || drip.life <= 0) {
-            meltDrips.splice(index, 1);
+        if (crystal.life <= 0 && crystal.path.length <= 1) {
+            frostLines.splice(i, 1);
         }
-    });
-}
+    }
 
-class shootingStar {
-    constructor() {
-        this.reset();        
-    }
-    reset() {
-        this.x = Math.random() * effectsCanvas.width;
-        this.y = 0;
-        this.len = Math.random() * 80 + 10;
-        this.speed = Math.random() * 10 + 6;
-        this.active = true;
-    }
-    update() {
-        if (this.active) {
-            this.x -= this.speed;
-            this.y += this.speed;
-            if (this.x < 0 || this.y > effectsCanvas.height) {
-                this.active = false;
+    if (isThemeSnowy && frostLines.length < 400) {
+        if (Math.random() < 0.1) {
+            const {width, height} = cardEffectsCanvas.getBoundingClientRect();
+            let x, y, angle;
+            const side = Math.floor(Math.random() * 4);
+
+            if (side === 0) {
+                x = 0;
+                y = Math.random() * height;
+                angle = Math.random() * Math.PI / 2 - Math.PI / 4;
+            } else if (side === 1) {
+                x = width;
+                y = Math.random() * height;
+                angle = Math.random() * Math.PI / 2 + Math.PI / 2 + Math.PI / 4;
+            } else if (side === 2) {
+                x = Math.random() * width;
+                y = 0;
+                angle = Math.random() * Math.PI / 2 + Math.PI / 4;
+            } else {
+                x = Math.random() * width;
+                y = height;
+                angle = Math.random() * Math.PI / 2 - Math.PI - Math.PI / 4;
             }
-        }
-    }
-    draw(ctx) {
-        if (this.active) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(this.x, this.y);
-            ctx.lineTo(this.x + this.len, this.y - this.len);
-            ctx.stroke();
+            frostLines.push(new FrostCrystal(x, y, angle, cardEffectsCtx));
         }
     }
 }
 
-function drawLightning() {
-    if (Math.random() > 0.99) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+function drawMeltDrips() {
+    for (let i = globalMeltDrips.length - 1; i >= 0; i--) {
+        const drip = globalMeltDrips[i];
+        drip.update();
+        if (drip.life <= 0 || drip.y > effectsCanvas.height) {
+            globalMeltDrips.splice(i, 1);
+        } else {
+            drip.draw(effectsCtx);
+        }
     }
 }
