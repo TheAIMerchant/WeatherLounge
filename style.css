@@ -150,7 +150,6 @@ body.torch-on::before {
 
 #geo-button {
     border-left: 1px solid var(--border-color);
-    font-size: 1.2rem;
 }
 
 /*weather card*/
@@ -317,6 +316,13 @@ body.torch-on::before {
     cursor: pointer;
     border-radius: 50%;
     transition: background 0.2s;
+    color: white;
+    width: 45px;
+    height: 45px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 #theme-tester button:hover {

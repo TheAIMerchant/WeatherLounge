@@ -13,6 +13,7 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link rel="icon" href="data:,">
         <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
         <script src="https://rawgit.com/darkskyapp/skycons/master/skycons.js" defer></script>
     </head>
 
@@ -25,7 +26,7 @@
             <div class="search-bar">
                 <input type="text" id="city-input" placeholder="Enter a city name">
                 <button id="search-button">Search</button>
-                <button id="geo-button">📍</button>
+                <button id="geo-button"><i class="fa-solid fa-location-crosshairs"></i></button>
             </div>
             <div class="weather-card">
                 <canvas id="card-effects-canvas"></canvas>
@@ -49,17 +50,17 @@
         </div>
 
         <div id="tools-sidebar">
-            <button id="umbrella-button" title="Toggle Umbrella Shield" class="tool-button">☂️</button>
-            <button id="heater-button" title="Toggle Frost Melting" class="tool-button">🔥</button>
-            <button id="torch-button" title="Toggle Torch" class="tool-button">🔦</button>
+            <button id="umbrella-button" title="Toggle Umbrella Shield" class="tool-button"><i class="fa-solid fa-umbrella"></i></button>
+            <button id="heater-button" title="Toggle Frost Melting" class="tool-button"><i class="fa-solid fa-fire-flame-curved"></i></button>
+            <button id="torch-button" title="Toggle Torch" class="tool-button"><i class="fa-solid fa-lightbulb"></i></button>
         </div>
         <div id="theme-tester">
-            <button data-theme="sunny">☀️</button>
-            <button data-theme="cloudy">☁️</button>
-            <button data-theme="rainy">🌧️</button>
-            <button data-theme="snowy">❄️</button>
-            <button data-theme="thunderstorm">⚡️</button>
-            <button data-theme="night">🌙</button>
+            <button data-theme="sunny"><i class="fa-solid fa-sun"></i></button>
+            <button data-theme="cloudy"><i class="fa-solid fa-cloud"></i></button>
+            <button data-theme="rainy"><i class="fa-solid fa-cloud-showers-heavy"></i></button>
+            <button data-theme="snowy"><i class="fa-solid fa-snowflake"></i></button>
+            <button data-theme="thunderstorm"><i class="fa-solid fa-cloud-bolt"></i></button>
+            <button data-theme="night"><i class="fa-solid fa-moon"></i></button>
         </div>
         <audio id="rain-sound" src="assets/rain-sound.mp3" loop></audio>
         <audio id="wind-sound" src="https://freesound.org/people/ZIP.Creates/sounds/726318/download/726318__zipcreates__wind-7.wav" loop></audio>

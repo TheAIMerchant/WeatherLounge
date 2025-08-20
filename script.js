@@ -95,9 +95,10 @@ function addEventListeners() {
     torchButton.addEventListener('click', () => toggleTool('torch'));
 
     document.getElementById('theme-tester').addEventListener('click', e => {
-        if (e.target.tagName === 'BUTTON') {
+        const button = e.target.closest('button');
+        if (button) {
             markUserInteraction();
-            setTheme(e.target.dataset.theme);
+            setTheme(button.dataset.theme);
         }
     });
 }
