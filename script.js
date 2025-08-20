@@ -944,9 +944,6 @@ function drawParticles() {
 
 function drawLightning() {
     if (appState.theme === 'thunderstorm' && Math.random() > 0.998 && lightningBolts.length < 1) {
-        effectsCtx.fillStyle = 'rgba(200, 220, 255, 0.6)';
-        effectsCtx.fillRect(0, 0, effectsCanvas.width, effectsCanvas.height);
-
         const heavyClouds = clouds.filter(c => c.isHeavy);
         if (heavyClouds.length > 0) {
             const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
@@ -1100,20 +1097,20 @@ class FrostCrystal {
                 this.meltTimer--;
                 this.path.pop();
 
-                if (this.dripCooldown <= 0 && Math.random() < 0.3) {
+                if (this.dripCooldown <= 0 && Math.random() < 0.005) {
                  const dripPoint = this.path[this.path.length - 1];
                  const cardRect = weatherCard.getBoundingClientRect();
                  const globalX = cardRect.left + dripPoint.x;
                  const globalY = cardRect.top + dripPoint.y;
                  globalMeltDrips.push(new MeltDrip(globalX, globalY));
 
-                 this.dripCooldown = 30 + Math.random() * 60;
+                 this.dripCooldown = 30 + Math.random() * 100;
                 }
 
             } else {
                 this.life = 0;
             }
-            
+
         } else if (isThemeSnowy && this.life > 0) {
             const newX = lastPoint.x + Math.cos(this.angle) * this.speed;
             const newY = lastPoint.y + Math.sin(this.angle) * this.speed;
