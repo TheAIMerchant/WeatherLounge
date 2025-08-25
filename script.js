@@ -11,6 +11,15 @@ const descEl = document.getElementById('weather-description');
 const feelsLikeEl = document.getElementById('feels-like');
 const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
+const THEME_WARMTH = {
+    sunny: 3,
+    cloudy: 2,
+    misty: 1,
+    rainy: 1,
+    thunderstorm: 1,
+    night: 1,
+    snowy: 0
+};
 
 // Canvases
 const skyCanvas = document.getElementById('sky-canvas');
@@ -266,20 +275,24 @@ function setTheme(theme, instant = false, dt = null) {
     appState.previousTheme = appState.theme;
     appState.theme = theme;
 
+    if (appState.previousTheme === 'snowy' && appState.theme !== 'snowy') {
+        const meltSpeed = THEME_WARMTH[appState.theme] || 1;
+        setTimeout(() => {
+            frostLines.forEach(crystal => {
+                crystal.autoMeltSpeed = meltSpeed;
+            });    
+        }, 1000);
+        
+    } else if (appState.theme === 'snowy' && appState.previousTheme !== 'snowy') {
+        frostLines = [];
+        createFrost();
+    }
+
     if (isNight(theme) && stars.length === 0) {
         createStars(window.innerWidth / 8);
     }
 
     createClouds(appState.theme);
-
-    if (appState.previousTheme === 'snowy' && appState.theme !== 'snowy') {
-        frostLines.forEach(crystal => {
-            crystal.autoMelt = true;
-        });
-    } else if (appState.theme === 'snowy' && appState.previousTheme !== 'snowy') {
-        frostLines = [];
-        createFrost();
-    }
 
     const colors = {
         sunny: {top: '#4A85D3', bottom: '#AEC9E8'},
@@ -288,25 +301,19 @@ function setTheme(theme, instant = false, dt = null) {
         thunderstorm: {top: '#263238', bottom: '#455A64'},
         snowy: {top: '#B0BEC5', bottom: '#242B3E'},
         night: {top: '#0f1018', bottom: '#242B3E'},
-        misty: {top: '#BOBEC5', bottom: '#CFD8DC'},
+        misty: {top: '#B0BEC5', bottom: '#CFD8DC'},
         sunset: {top: '#F79D51', bottom: '#F27164'},
     };
 
-    if (theme === 'sunny') {
-        appState.targetTimeOfDay = 0.5;
-    } else if (theme === 'night') {
-        appState.targetTimeOfDay = 0.0;
-    } else {
-        const date = dt || new Date();
-        const hours = date.getUTCHours();
-        const minutes = date.getUTCMinutes();
-        appState.targetTimeOfDay = (hours * 60 + minutes) / (24 * 60);
-    }
+    const date = dt || new Date();
+    const hours = date.getUTCHours();
+    const minutes = date.getUTCMinutes();
+    appState.targetTimeOfDay = (hours * 60 + minutes) / (24 * 60);
 
     if (Math.abs(appState.targetTimeOfDay - appState.timeOfDay) > 0.5) {
         if (appState.timeOfDay > appState.targetTimeOfDay) {
             appState.targetTimeOfDay += 1.0;
-        }else {
+        } else {
             appState.timeOfDay += 1.0;
         }
     }
@@ -569,7 +576,7 @@ function drawUmbrellaShade(ctx) {
     const dx = mouse.x - appState.sun.x;
     const dy = mouse.y - appState.sun.y;
     const angle = Math.atan2(dy, dx);
-    const sunHeightFactor = Math.max(0, 1 - (appState.y / (skyCanvas.height * 0.7)));
+    const sunHeightFactor = Math.max(0, 1 - (appState.sun.y / (skyCanvas.height * 0.7)));
     const shadowLength = 300 * sunHeightFactor;
 
     ctx.save();
@@ -709,7 +716,7 @@ class Particle {
 
         const isRainyTheme = appState.theme === 'rainy' || appState.theme === 'thunderstorm';
 
-        if (isUmbrellaActive && (isRainyTheme || appState.theme === 'snowy') && mouse.x !== undefined) {
+        if (isUmbrellaActive && particles.length > 0 && mouse.x !== undefined) {
             let dx = mouse.x - this.x;
             let dy = mouse.y - this.y;
             let distance = Math.hypot(dx, dy);
@@ -1110,19 +1117,16 @@ class MeltDrip {
         this.r = 2.0;
         this.speedY = Math.random() * 0.5 + 0.2;
         this.gravity = 0.02;
-        this.life = 150;
     }
     update() {
         this.speedY += this.gravity;
         this.y += this.speedY;
-        this.life--;
     }
     draw(ctx) {
-        const opacity = Math.min(1, this.life / 100);
         const streakLength = this.r * 5;
         const gradient = ctx.createLinearGradient(this.x, this.y - streakLength, this.x, this.y);
         gradient.addColorStop(0, `rgba(210, 220, 235, 0)`);
-        gradient.addColorStop(1, `rgba(210, 220, 235, ${0.6 * opacity})`);
+        gradient.addColorStop(1, `rgba(210, 220, 235, 0.6)`);
 
         ctx.strokeStyle = gradient;
         ctx.lineWidth = this.r * 0.75;
@@ -1143,14 +1147,14 @@ class FrostCrystal {
         this.isFrozen = true;
         this.meltTimer = 0;
         this.canvasRect = ctx.canvas.getBoundingClientRect();
-        this.autoMelt = false;
+        this.autoMeltSpeed = 0;
         this.initialLength = 0;
         this.dripCooldown = 0;
     }
     update(ctx, mouse, heatRadius, isHeaterActive, isThemeSnowy) {
         const lastPoint = this.path[this.path.length - 1];
 
-        let shouldStartMelting = (isHeaterActive && mouse.cardX !== undefined && Math.hypot(lastPoint.x - mouse.cardX, lastPoint.y - mouse.cardY) < heatRadius) || this.autoMelt;
+        let shouldStartMelting = (isHeaterActive && mouse.cardX !== undefined && Math.hypot(lastPoint.x - mouse.cardX, lastPoint.y - mouse.cardY) < heatRadius) || this.autoMeltSpeed > 0;
 
         if (this.isFrozen && shouldStartMelting) {
             this.isFrozen = false;
@@ -1165,7 +1169,11 @@ class FrostCrystal {
         if (!this.isFrozen) {
             if (this.path.length > 1) {
                 this.meltTimer--;
-                this.path.pop();
+                
+                const meltAmount = isHeaterActive ? 3 : this.autoMeltSpeed;
+                for (let i = 0; i < meltAmount && this.path.length > 1; i++) {
+                    this.path.pop();
+                }
 
                 if (this.dripCooldown <= 0 && Math.random() < 0.005) {
                  const dripPoint = this.path[this.path.length - 1];
@@ -1289,7 +1297,7 @@ function drawMeltDrips() {
     for (let i = globalMeltDrips.length - 1; i >= 0; i--) {
         const drip = globalMeltDrips[i];
         drip.update();
-        if (drip.life <= 0 || drip.y > effectsCanvas.height) {
+        if (drip.y > effectsCanvas.height) {
             globalMeltDrips.splice(i, 1);
         } else {
             drip.draw(effectsCtx);
