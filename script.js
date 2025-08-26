@@ -66,6 +66,8 @@ let appState = {
 };
 
 let particles = [];
+let fireParticles = [];
+let smokeParticles = [];
 let stars = [];
 let shootingStars = [];
 let clouds = [];
@@ -74,7 +76,16 @@ let frostLines = [];
 let globalMeltDrips = [];
 let heatTrail = [];
 let currentHeatPoint = {x: 0, y: 0, intensity: 0};
+let cardHeatPoint = {
+    x: 0,
+    y: 0,
+    intensity: 0,
+    lastMouseX: 0,
+    lastMouseY: 0,
+};
 
+let cursorChangeTimeout = null;
+let cursorResetTimeout = null;
 let userHasInteracted = false;
 let isUmbrellaActive = false;
 let isHeaterActive = false;
@@ -86,7 +97,7 @@ window.addEventListener('DOMContentLoaded', () => {
     moonTextureCanvas = createMoonTexture(128);
     setupCanvases();
     addEventListeners();
-    setTheme('night', true);
+    setTheme('night', true, null, true);
     animate();
 });
 
@@ -107,7 +118,7 @@ function addEventListeners() {
         const button = e.target.closest('button');
         if (button) {
             markUserInteraction();
-            setTheme(button.dataset.theme);
+            setTheme(button.dataset.theme, false, null, true);
         }
     });
 }
@@ -125,6 +136,20 @@ function setupCanvases() {
     effectsCanvas.width = window.innerWidth;
     effectsCanvas.height = window.innerHeight;
     setCanvasSize(cardEffectsCanvas, cardEffectsCtx);
+}
+
+function resizeCardCanvas() {
+    const canvas = cardEffectsCanvas;
+    const ctx = cardEffectsCtx;
+    const rect = weatherCard.getBoundingClientRect();
+
+    if (canvas.width === rect.width * dpr && canvas.height === rect.height * dpr) {
+        return;
+    }
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
 }
 
 function handleMouseMove(e) {
@@ -238,6 +263,7 @@ function updateUI(weatherData, cityName) {
     setTheme(theme, false, cityTime);
     
     renderHourlyForecast(hourly || []);
+    resizeCardCanvas();
 }
 
 function renderHourlyForecast(hourly) {
@@ -269,7 +295,7 @@ function handleError(message) {
     hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
 }
 
-function setTheme(theme, instant = false, dt = null) {
+function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     if (appState.theme === theme && !instant) return;
 
     appState.previousTheme = appState.theme;
@@ -305,21 +331,38 @@ function setTheme(theme, instant = false, dt = null) {
         sunset: {top: '#F79D51', bottom: '#F27164'},
     };
 
-    const date = dt || new Date();
-    const hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    appState.targetTimeOfDay = (hours * 60 + minutes) / (24 * 60);
-
-    if (Math.abs(appState.targetTimeOfDay - appState.timeOfDay) > 0.5) {
-        if (appState.timeOfDay > appState.targetTimeOfDay) {
-            appState.targetTimeOfDay += 1.0;
-        } else {
-            appState.timeOfDay += 1.0;
-        }
+    let targetTime;
+    
+    if (isManualOverride && theme === 'sunny' ) {
+        targetTime = 0.5;
+    } else if (isManualOverride && theme === 'night') {
+        targetTime = 0.0;
+    } else {
+        const date = dt || new Date();
+        const hours = date.getUTCHours();
+        const minutes = date.getUTCMinutes();
+        targetTime = (hours * 60 + minutes) / (24 * 60);
     }
 
+    const currentTime = appState.timeOfDay;
+
+    const isConsideredDay = (time) => time >= 0.25 && time < 0.75;
+    const isConsideredNight = (time) => !isConsideredDay(time);
+    const isBackwardJump = targetTime < currentTime;
+
+    const staysInDay = isConsideredDay(currentTime) && isConsideredDay(targetTime);
+    const staysInNight = isConsideredNight(currentTime) && isConsideredNight(targetTime);
+
+    if (isBackwardJump && (staysInDay || staysInNight)) {
+
+    } else if (isBackwardJump) {
+        targetTime += 1.0;
+    }
+
+    appState.targetTimeOfDay = targetTime;
+
     if (instant) {
-        appState.timeOfDay = appState.targetTimeOfDay;
+        appState.timeOfDay = appState.targetTimeOfDay % 1.0;
         appState.skyColors = {...colors[theme]};
         appState.targetSkyColors = {...colors[theme]};
         appState.isTransitioning = false;
@@ -329,6 +372,7 @@ function setTheme(theme, instant = false, dt = null) {
         appState.transitionStartTime = performance.now();
         appState.targetSkyColors = {...colors[theme]};
     }
+
     bodyEl.className = `theme-${theme}`;
     updateToolsVisibility(); 
 }
@@ -411,8 +455,30 @@ function fadeSound(audio, targetVolume, duration) {
 
 function toggleTool(tool) {
     if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
-    if (tool === 'heater') isHeaterActive = !isHeaterActive;
     if (tool === 'torch') isTorchActive = !isTorchActive;
+
+    if (tool === 'heater') {
+        isHeaterActive = !isHeaterActive;
+
+        clearTimeout(cursorChangeTimeout);
+        clearTimeout(cursorResetTimeout);
+
+        if (isHeaterActive) {
+            bodyEl.classList.remove('fire-cursor-on');
+            cursorChangeTimeout = setTimeout(() => {
+                bodyEl.classList.add('fire-cursor-on');
+            }, 5000);
+        } else {
+            cursorResetTimeout = setTimeout(() => {
+                bodyEl.classList.remove('fire-cursor-on');
+            }, 2000);
+
+            for (let i = 0; i < 30; i++) {
+                smokeParticles.push(new SmokeParticle(mouse.x, mouse.y));
+            }
+        }
+    }
+
     updateToolsVisibility(appState.theme);
 }
 
@@ -435,7 +501,7 @@ function animate(timestamp) {
     if (appState.isTransitioning) {
         const elapsed = timestamp - appState.transitionStartTime;
         transitionProgress = Math.min(elapsed / appState.transitionDuration, 1.0);
-        appState.timeOfDay = lerp(appState.timeOfDay, appState.targetTimeOfDay, 0.05);
+        appState.timeOfDay = lerp(appState.timeOfDay, appState.targetTimeOfDay, 0.01);
 
         if (appState.timeOfDay >= 1.0) {
             appState.timeOfDay -= 1.0;
@@ -456,7 +522,9 @@ function animate(timestamp) {
     drawClouds(transitionProgress);
 
     handleWeatherEffects();
+    handleFireEffect();
     drawParticles();
+    drawFireAndSmoke(effectsCtx);
     drawLightning();
     drawMeltDrips();
     drawUmbrellaShade(effectsCtx);
@@ -509,10 +577,10 @@ function drawCelestialBodies() {
     const angle = time * Math.PI * 2 + (Math.PI / 2);
 
     const centerX = skyCanvas.width / 2;
-    const centerY = skyCanvas.height * 1.0;
+    const centerY = skyCanvas.height * 1.2;
 
     const radiusX = skyCanvas.width / 2 + 100;
-    const radiusY = skyCanvas.height * 0.9;
+    const radiusY = skyCanvas.height * 1.1;
 
     const x = centerX + Math.cos(angle) * radiusX;
     const y = centerY + Math.sin(angle) * radiusY;
@@ -594,6 +662,36 @@ function drawUmbrellaShade(ctx) {
         ctx.fill();
     }
     ctx.restore();
+}
+
+function handleFireEffect() {
+    if (!isHeaterActive || mouse.x === undefined) return;
+
+    for (let i = 0; i < 3; i++) {
+        fireParticles.push(new FireParticle(mouse.x, mouse.y));
+    }
+}
+
+function drawFireAndSmoke(ctx) {
+    for (let i = fireParticles.length - 1; i >= 0; i--) {
+        const p = fireParticles[i];
+        p.update();
+        if (p.life <= 0) {
+            fireParticles.splice(i, 1);
+        } else {
+            p.draw(ctx);
+        }
+    }
+
+    for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const p = smokeParticles[i];
+        p.update();
+        if (p.life <= 0) {
+            smokeParticles.splice(i, 1);
+        } else {
+            p.draw(ctx);
+        }
+    }
 }
 
 function getCloudColorSet(theme, isHeavy) {
@@ -895,8 +993,7 @@ function createClouds(theme) {
         case 'rainy': case 'thunderstorm': targetLight = 15; targetHeavy = 25; break;
     }
 
-    const clearThemes = ['sunny', 'night'];
-    const needsFadeIn = appState.previousTheme && clearThemes.includes(appState.previousTheme) && !clearThemes.includes(theme);
+    const needsFadeIn = !!appState.previousTheme;
 
     let currentLight = clouds.filter(c => !c.isHeavy).length;
     let currentHeavy = clouds.filter(c => c.isHeavy).length;
@@ -1053,60 +1150,42 @@ function drawCardEffects() {
 }
 
 function drawCardHeat() {
-    let heatMultiplier = 1.0;
-    if (appState.theme === 'sunny') heatMultiplier = 1.5;
-    else if (appState.theme === 'cloudy') heatMultiplier = 1.2;
-    
     const cardRect = weatherCard.getBoundingClientRect();
     const isMouseOverCard = mouse.x > cardRect.left && mouse.x < cardRect.right && mouse.y > cardRect.top && mouse.y < cardRect.bottom;
 
-    if (isMouseOverCard) {
-        currentHeatPoint.x = mouse.cardX;
-        currentHeatPoint.y = mouse.cardY;
-        currentHeatPoint.intensity = Math.min(1.0, currentHeatPoint.intensity + (0.04 * heatMultiplier));
-        if (heatTrail.length === 0 || Math.hypot(currentHeatPoint.x - heatTrail[heatTrail.length-1].x, currentHeatPoint.y - heatTrail[heatTrail.length-1].y) > 5) {
-            heatTrail.push({...currentHeatPoint});
+    if (isHeaterActive && isMouseOverCard) {
+        const distanceMoved = Math.hypot(mouse.cardX - cardHeatPoint.lastMouseX, mouse.cardY - cardHeatPoint.lastMouseY);
+
+        if (distanceMoved < 2) {
+            cardHeatPoint.intensity = Math.min(1.0, cardHeatPoint.intensity + 0.005);
+            if (currentHeatPoint.intensity < 0.05) {
+                cardHeatPoint.x = mouse.cardX;
+                cardHeatPoint.y = mouse.cardY;
+            }
+        } else {
+            cardHeatPoint.intensity = Math.max(0, cardHeatPoint.intensity - 0.01);
         }
+        if (cardHeatPoint.intensity > 0.01) {
+            cardHeatPoint.lastMouseX = mouse.cardX;
+            cardHeatPoint.lastMouseY = mouse.cardY;
+        }
+    } else {
+        cardHeatPoint.intensity = Math.max(0, cardHeatPoint.intensity - 0.01);
     }
 
-    if (currentHeatPoint.intensity > 0) {
-        currentHeatPoint.intensity = Math.max(0, currentHeatPoint.intensity - 0.03);
-    }
-    cardEffectsCtx.globalCompositeOperation = 'lighter';
+    if (cardHeatPoint.intensity > 0.01) {
+        const glowRadius = 20 + (60 * cardHeatPoint.intensity);
+        const coreRadius = 30 * cardHeatPoint.intensity;
 
-    if (currentHeatPoint.intensity > 0) {
-        const glowRadius = 30 * currentHeatPoint.intensity;
-        const gradient = cardEffectsCtx.createRadialGradient(currentHeatPoint.x, currentHeatPoint.y, 0, currentHeatPoint.x, currentHeatPoint.y, glowRadius);
-        gradient.addColorStop(0, `rgba(255, 120, 0, ${0.6 * currentHeatPoint.intensity})`);
-        gradient.addColorStop(0.5, `rgba(255, 60, 0, ${0.3 * currentHeatPoint.intensity})`);
-        gradient.addColorStop(1, 'rgba(252, 74, 26, 0');
+        const gradient = cardEffectsCtx.createRadialGradient(cardHeatPoint.x, cardHeatPoint.y, 0, cardHeatPoint.x, cardHeatPoint.y, glowRadius);
+        gradient.addColorStop(0, `rgba(255, 80, 0, ${0.7 * cardHeatPoint.intensity})`);
+        gradient.addColorStop(coreRadius / glowRadius, `rgba(200, 40, 0, ${0.5 * cardHeatPoint.intensity})`);
+        gradient.addColorStop(1, 'rgba(150, 0, 0, 0)');
 
         cardEffectsCtx.fillStyle = gradient;
         cardEffectsCtx.beginPath();
-        cardEffectsCtx.arc(currentHeatPoint.x, currentHeatPoint.y, glowRadius, 0, Math.PI * 2);
+        cardEffectsCtx.arc(cardHeatPoint.x, cardHeatPoint.y, glowRadius, 0, Math.PI * 2);
         cardEffectsCtx.fill();
-    }
-
-    cardEffectsCtx.lineCap = 'round';
-    cardEffectsCtx.lineJoin = 'round';
-    for (let i = 1; i < heatTrail.length; i++) {
-        const point = heatTrail[i];
-        const prevPoint = heatTrail[i - 1];
-        cardEffectsCtx.strokeStyle = `rgba(255, 100, 50, ${0.4 * point.intensity})`;
-        cardEffectsCtx.lineWidth = 15 * point.intensity;
-        cardEffectsCtx.beginPath();
-        cardEffectsCtx.moveTo(prevPoint.x, prevPoint.y);
-        cardEffectsCtx.lineTo(point.x, point.y);
-        cardEffectsCtx.stroke();
-    }
-
-    cardEffectsCtx.globalCompositeOperation = 'source-over';
-
-    for (let i = heatTrail.length - 1; i >= 0; i--) {
-        heatTrail[i].intensity -= 0.02;
-        if (heatTrail[i].intensity <= 0) {
-            heatTrail.splice(i, 1);
-        }
     }
 }
 
@@ -1215,6 +1294,79 @@ class FrostCrystal {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 0.8;
         ctx.stroke();
+    }
+}
+
+class FireParticle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 20 + 10;
+        this.speedX = Math.random() * 2 - 1;
+        this.speedY = Math.random() * 2 + 1;
+        this.life = 1.0;
+        this.decay = Math.random() * 0.03 + 0.02;
+    }
+
+    update() {
+        this.life -= this.decay;
+        this.x += this.speedX;
+        this.y -= this.speedY;
+        this.size *= 0.95
+    }
+
+    draw(ctx) {
+        if (this.life <= 0 || this.size < 1) return;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+        const colorProgress = 1 -this.life;
+        gradient.addColorStop(0, `rgba(255, 255, 220, ${this.life * 0.8})`);
+        gradient.addColorStop(0.4, `rgba(255, 180, 0, ${this.life * 0.6})`);
+        gradient.addColorStop(1, `rgba(210, 50, 0, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class SmokeParticle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.randome() * 10 + 5;
+        this.speedX = Math.random() * 1 - 0.5;
+        this.speedY = Math.ranodom() * 0.5 + 0.5;
+        this.life = 1.0;
+        this.decay = Math.random() * 0.01 + 0.005;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random - 0.5) * 0.01;
+    }
+
+    update() {
+        this.life -= this.decay;
+        this.x += this.speedX;
+        this.y -= this.speedY;
+        this.size += 0.1;
+        this.rotation += this.rotationSpeed;
+    }
+    
+    draw(ctx) {
+        if (this.life <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.life * 0.4;
+        ctx.fillStyle = '#555';
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 }
 
