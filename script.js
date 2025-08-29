@@ -38,9 +38,8 @@ const torchButton = document.getElementById('torch-button');
 
 // Audio
 const rainSound = document.getElementById('rain-sound');
-const windSound = document.getElementById('wind-sound');
 const thunderSound = document.getElementById('thunder-sound');
-const allSounds = [rainSound, windSound, thunderSound];
+const allSounds = [rainSound, thunderSound];
 
 
 const icons = new Skycons({"color" : "white"});
@@ -56,7 +55,7 @@ let appState = {
     targetTimeOfDay: 0,
     skyColors: {top: '#000', bottom: '#000'},
     targetSkyColors: {top: '#000', bottom: '#000'},
-    sun: {x: 0, y: 0, size: 50 },
+    sun: {x: 0, y: 0, size: 50},
     moon: {x: 0, y: 0, size: 40},
     celestialBodyPositions: {
         sunStartY: 0, sunEndY: 0,
@@ -68,6 +67,8 @@ let appState = {
 let particles = [];
 let fireParticles = [];
 let smokeParticles = [];
+let sootParticles = [];
+let isMouseBurnt = false;
 let stars = [];
 let shootingStars = [];
 let clouds = [];
@@ -75,6 +76,9 @@ let lightningBolts = [];
 let frostLines = [];
 let globalMeltDrips = [];
 let heatTrail = [];
+let heaterStartTime = [];
+let flameDouseCounter = [];
+let lastSootTime = 0; 
 let currentHeatPoint = {x: 0, y: 0, intensity: 0};
 let cardHeatPoint = {
     x: 0,
@@ -84,14 +88,26 @@ let cardHeatPoint = {
     lastMouseY: 0,
 };
 
-let cursorChangeTimeout = null;
-let cursorResetTimeout = null;
 let userHasInteracted = false;
 let isUmbrellaActive = false;
 let isHeaterActive = false;
 let isTorchActive = false;
-const mouse = {x: undefined, y: undefined, radius: 300};
 let moonTextureCanvas;
+
+const mouse = {x: undefined, y: undefined, radius: 300};
+const mouseShake = {
+    lastX: 0,
+    lastY: 0,
+    lastTime: 0,
+    speed: 0,
+    SHAKE_THRESHOLD: 1.8
+};
+
+const HEATER_MELT_RADIUS = 100;
+const SNOWFLAKE_MELT_DELAY_FRAMES = 30;
+const SOOT_PRODUCTION_INTERVAL = 150;
+const SOOT_DELAY = 1500;
+const RAIN_HITS_TO_EXTINGUISH = 35;
 
 window.addEventListener('DOMContentLoaded', () => {
     moonTextureCanvas = createMoonTexture(128);
@@ -303,12 +319,9 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
 
     if (appState.previousTheme === 'snowy' && appState.theme !== 'snowy') {
         const meltSpeed = THEME_WARMTH[appState.theme] || 1;
-        setTimeout(() => {
-            frostLines.forEach(crystal => {
-                crystal.autoMeltSpeed = meltSpeed;
-            });    
-        }, 1000);
-        
+        frostLines.forEach(line => {
+            line.autoMeltSpeed = meltSpeed;
+        });       
     } else if (appState.theme === 'snowy' && appState.previousTheme !== 'snowy') {
         frostLines = [];
         createFrost();
@@ -455,29 +468,19 @@ function fadeSound(audio, targetVolume, duration) {
 
 function toggleTool(tool) {
     if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
-    if (tool === 'torch') isTorchActive = !isTorchActive;
-
     if (tool === 'heater') {
         isHeaterActive = !isHeaterActive;
-
-        clearTimeout(cursorChangeTimeout);
-        clearTimeout(cursorResetTimeout);
-
         if (isHeaterActive) {
-            bodyEl.classList.remove('fire-cursor-on');
-            cursorChangeTimeout = setTimeout(() => {
-                bodyEl.classList.add('fire-cursor-on');
-            }, 5000);
-        } else {
-            cursorResetTimeout = setTimeout(() => {
-                bodyEl.classList.remove('fire-cursor-on');
-            }, 2000);
-
+            heaterStartTime = performance.now();
             for (let i = 0; i < 30; i++) {
-                smokeParticles.push(new SmokeParticle(mouse.x, mouse.y));
+            smokeParticles.push(new SmokeParticle(mouse.x, mouse.y));
             }
+        } else {
+            heaterStartTime = 0;
+            flameDouseCounter = 0;
         }
     }
+    if (tool === 'torch') isTorchActive = !isTorchActive;    
 
     updateToolsVisibility(appState.theme);
 }
@@ -523,8 +526,13 @@ function animate(timestamp) {
 
     handleWeatherEffects();
     handleFireEffect();
+    handleBurntMouseLogic(timestamp);
+    handleRainExtinguishLogic();
+
     drawParticles();
     drawFireAndSmoke(effectsCtx);
+    drawSoot(effectsCtx);
+
     drawLightning();
     drawMeltDrips();
     drawUmbrellaShade(effectsCtx);
@@ -846,7 +854,66 @@ class RainDrop extends Particle {
 }
 
 class Snowflake extends Particle {
+    constructor(x, y, size, speedX, speedY) {
+        super(x, y, size, speedX, speedY);
+        this.heatExposure = 0;
+    }
+
+    update() {
+        super.update();
+
+        let isInHeat = false;
+
+        if (isHeaterActive && mouse.x !== undefined) {
+            const distanceToHeater = Math.hypot(this.x - mouse.x, this.y - mouse.y);
+            if (distanceToHeater < HEATER_MELT_RADIUS) {
+                isInHeat = true;
+                this.heatExposure++;
+            }
+        }
+
+        if (!isInHeat) {
+            this.heatExposure = Math.max(0, this.heatExposure - 1);
+        }
+
+        if (this.heatExposure > SNOWFLAKE_MELT_DELAY_FRAMES) {
+            globalMeltDrips.push(new MeltDrip(this.x, this.y));
+            this.life = 0;
+            return;
+        }
+
+        const isWarmerTheme = THEME_WARMTH[appState.theme] > THEME_WARMTH.snowy;
+        if (isWarmerTheme) {
+            const meltChance = (THEME_WARMTH[appState.theme] / 3) * 0.005;
+            if (Math.random() < meltChance) {
+                globalMeltDrips.push(new MeltDrip(this.x, this.y));
+                this.life = 0;
+                return;
+            }
+        }
+
+        if (this.y > effectsCanvas.height - 5) {
+            if (isWarmerTheme) {
+                globalMeltDrips.push(new MeltDrip(this.x, this.y));
+            }
+
+            this.life = 0;
+        }
+
+        if (this.y > effectsCanvas.height + this.size) {
+            this.life = 0;
+        }
+    }
+
     draw(ctx) {
+        if (this.life <= 0) return;
+
+        const meltProgress = this.heatExposure / SNOWFLAKE_MELT_DELAY_FRAMES;
+        const currentSize = this.size * (1 - meltProgress);
+        const currentOpacity = 0.8 * (1 - meltProgress);
+
+        if (currentSize < 0.5) return;
+
         ctx.fillStyle = `rgba(255, 255, 255, ${0.8 * this.life})`;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
@@ -979,6 +1046,47 @@ class shootingStar {
             ctx.lineTo(this.x + this.len, this.y - this.len);
             ctx.stroke();
         }
+    }
+}
+
+class SootParticle {
+    constructor(mouseX, mouseY) {
+        this.offsetX = (Math.random() - 0.5) * 20;
+        this.offsetY = (Math.random() - 0.5) * 20;
+        this.x = mouseX + this.offsetX;
+        this.y = mouseY + this.offsetY;
+        this.size = Math.random() * 4 + 2;
+        this.isStuck = true;
+        this.life = 1.0;
+        this.gravity = 0;
+    }
+    update(mouseX, mouseY) {
+        if (this.isStuck) {
+            this.x = mouseX + this.offsetX;
+            this.y = mouseY + this.offsetY;
+        } else {
+            if (isUmbrellaActive && mouse.x !== undefined) {
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.hypot(dx, dy);
+                let shelterRadius = 150;
+
+                if (distance < shelterRadius) {
+                    const force = (shelterRadius - distance) / shelterRadius;
+                    const pushStrength = 10;
+                    this.x -= (dx / distance) * force * pushStrength;
+                }
+            }
+            this.gravity += 0.1;
+            this.y += this.gravity;
+        }
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = `rgba(20, 10, 0, 0.8)`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
@@ -1177,6 +1285,10 @@ function drawCardHeat() {
         const glowRadius = 20 + (60 * cardHeatPoint.intensity);
         const coreRadius = 30 * cardHeatPoint.intensity;
 
+        cardEffectsCtx.save();
+        cardEffectsCtx.shadowColor = `rgba(255, 100, 0, ${0.8 * cardHeatPoint.intensity})`;
+        cardEffectsCtx.shadowBlur = 10 + 30 * cardHeatPoint.intensity;
+
         const gradient = cardEffectsCtx.createRadialGradient(cardHeatPoint.x, cardHeatPoint.y, 0, cardHeatPoint.x, cardHeatPoint.y, glowRadius);
         gradient.addColorStop(0, `rgba(255, 80, 0, ${0.7 * cardHeatPoint.intensity})`);
         gradient.addColorStop(coreRadius / glowRadius, `rgba(200, 40, 0, ${0.5 * cardHeatPoint.intensity})`);
@@ -1186,6 +1298,108 @@ function drawCardHeat() {
         cardEffectsCtx.beginPath();
         cardEffectsCtx.arc(cardHeatPoint.x, cardHeatPoint.y, glowRadius, 0, Math.PI * 2);
         cardEffectsCtx.fill();
+        cardEffectsCtx.restore();
+    }
+}
+
+function handleBurntMouseLogic(timestamp) {
+    if (isHeaterActive && !isMouseBurnt && heaterStartTime > 0 && timestamp - heaterStartTime > SOOT_DELAY) {
+        if (timestamp - lastSootTime > SOOT_PRODUCTION_INTERVAL) {
+            if (Math.random() > 0.6) {
+                if (sootParticles.length < 80) {
+                    sootParticles.push(new SootParticle(mouse.x, mouse.y));
+                } else {
+                    isMouseBurnt = true;
+                }
+            }
+            lastSootTime = timestamp;
+        }
+    }
+
+    if (sootParticles.length > 0) {
+        let wasCleaned = false;
+
+        const isRaining = appState.theme === 'rainy' || appState.theme === 'thunderstorm';
+        if (isRaining) {
+            let rainHits = 0;
+            const RAIN_HITS_NEEDED = 3;
+
+            for (const p of particles) {
+                if (p instanceof RainDrop) {
+                    const distance = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+                    if (distance < 30) {
+                        rainHits++;
+                        if (rainHits >= RAIN_HITS_NEEDED) {
+                            wasCleaned = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        const timeDelta = timestamp - mouseShake.lastTime;
+        if (!wasCleaned && timeDelta > 50) {
+            const distance = Math.hypot(mouse.x - mouseShake.lastX, mouse.y - mouseShake.lastY);
+            mouseShake.speed = distance / timeDelta;
+
+            if (mouseShake.speed > mouseShake.SHAKE_THRESHOLD) {
+                wasCleaned = true;
+            }
+
+            mouseShake.lastX = mouse.x;
+            mouseShake.lastY = mouse.y;
+            mouseShake.lastTime = timestamp;
+        }
+
+        if (wasCleaned) {
+            for (const p of sootParticles) {
+                p.isStuck = false;
+            }
+            if (isMouseBurnt) {
+                isMouseBurnt = false;
+            }
+        }
+    }
+}
+
+function handleRainExtinguishLogic() {
+    if (!isHeaterActive || (appState.theme !== 'rainy' && appState.theme !== 'thunderstorm')) {
+        flameDouseCounter = Math.max(0, flameDouseCounter - 0.1);
+        return;
+    }
+    const flameRadius = 30;
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        if (p instanceof RainDrop) {
+            const distance = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+
+            if (distance < flameRadius) {
+                flameDouseCounter++;
+                smokeParticles.push(new SteamParticle(p.x, p.y));
+                particles.splice(i, 1);
+            }
+        }
+    }
+
+    if (flameDouseCounter >= RAIN_HITS_TO_EXTINGUISH) {
+        for (let i = 0; i < 25; i++) {
+            smokeParticles.push(new SteamParticle(mouse.x, mouse.y));
+        }
+        toggleTool('heater');
+    }
+}
+
+function drawSoot(ctx) {
+    for (let i = sootParticles.length - 1; i >= 0; i--) {
+        const p = sootParticles[i];
+        p.update(mouse.x, mouse.y);
+
+        if (p.y > effectsCanvas.height + p.size) {
+            sootParticles.splice(i, 1);
+        } else {
+            p.draw(ctx);
+        }
     }
 }
 
@@ -1339,9 +1553,9 @@ class SmokeParticle {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.size = Math.randome() * 10 + 5;
+        this.size = Math.random() * 10 + 5;
         this.speedX = Math.random() * 1 - 0.5;
-        this.speedY = Math.ranodom() * 0.5 + 0.5;
+        this.speedY = Math.random() * 0.5 + 0.5;
         this.life = 1.0;
         this.decay = Math.random() * 0.01 + 0.005;
         this.rotation = Math.random() * Math.PI * 2;
@@ -1361,6 +1575,27 @@ class SmokeParticle {
         ctx.save();
         ctx.globalAlpha = this.life * 0.4;
         ctx.fillStyle = '#555';
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class SteamParticle extends SmokeParticle {
+    constructor(x, y) {
+        super(x, y);
+        this.speedY = Math.random() * 1.5 + 1;
+        this.decay = Math.random() * 0.02 + 0.01;
+    }
+
+    draw(ctx) {
+        if (this.life <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.life * 0.6;
+        ctx.fillStyle = '#bbbbbb';
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
         ctx.beginPath();

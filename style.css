@@ -26,20 +26,6 @@ body {
     position: relative;
 }
 
-body.fire-cursor-on {
-    cursor: url('assets/Flame-Normal-Cursor.gif'), auto;
-}
-
-body.fire-cursor-on a,
-body.fire-cursor-on button,
-body.fire-cursor-on input[type="text"] {
-    cursor: url('assets/Flame-TextSelect-Cursor.gif'), pointer;
-}
-
-body.fire-cursor-on:active {
-    cursor: url('assets/Flame-Hover-Cursor.gif'), auto;
-}
-
 /*Canvas + Background*/
 #sky-canvas {
     position: fixed;
