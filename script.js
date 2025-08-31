@@ -20,6 +20,17 @@ const THEME_WARMTH = {
     night: 1,
     snowy: 0
 };
+const SKY_COLOR_STOPS = [
+    {time: 0.0, colors: {top: '#0f1018', bottom: '#242B3E'}},
+    {time: 0.22, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},
+    {time: 0.37, colors: {top: '#F79D51', bottom: '#F27164'}},
+    {time: 0.45, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},
+    {time: 0.5, colors: {top: '#63a4ff', bottom: '#a2c8f0'}},
+    {time: 0.57, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},
+    {time: 0.62, colors: {top: '#F79D51', bottom: '#F27164'}},
+    {time: 0.7, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},
+    {time: 1.0, colors: {top: '#0f1018', bottom: ' #242B3E'}}
+];
 
 // Canvases
 const skyCanvas = document.getElementById('sky-canvas');
@@ -51,6 +62,7 @@ let appState = {
     isTransitioning: false,
     transitionStartTime: 0,
     transitionDuration: 5000,
+    startTimeOfDay: 0,    
     timeOfDay: 0,
     targetTimeOfDay: 0,
     skyColors: {top: '#000', bottom: '#000'},
@@ -61,6 +73,7 @@ let appState = {
         sunStartY: 0, sunEndY: 0,
         moonStartY: 0, moonEndY: 0,
     },
+    isFlameBurntScheduled: false,
     activeWeatherEffect: 'none',
 };
 
@@ -78,7 +91,8 @@ let globalMeltDrips = [];
 let heatTrail = [];
 let heaterStartTime = [];
 let flameDouseCounter = [];
-let lastSootTime = 0; 
+let lastSootTime = 0;
+let lastSnowflakeTime = 0;
 let currentHeatPoint = {x: 0, y: 0, intensity: 0};
 let cardHeatPoint = {
     x: 0,
@@ -104,10 +118,13 @@ const mouseShake = {
 };
 
 const HEATER_MELT_RADIUS = 100;
+const MOUSE_PARTICLE_RADIUS = 50;
+const MOUSE_PARTICLE_STRENGTH = 2;
 const SNOWFLAKE_MELT_DELAY_FRAMES = 30;
 const SOOT_PRODUCTION_INTERVAL = 150;
 const SOOT_DELAY = 1500;
 const RAIN_HITS_TO_EXTINGUISH = 35;
+const SNOWFLAKE_INTERVAL = 50;
 
 window.addEventListener('DOMContentLoaded', () => {
     moonTextureCanvas = createMoonTexture(128);
@@ -314,8 +331,52 @@ function handleError(message) {
 function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     if (appState.theme === theme && !instant) return;
 
+    if (isHeaterActive && appState.previousTheme) {
+        const oldWarmth = THEME_WARMTH[appState.previousTheme] ?? 0;
+        const newWarmth = THEME_WARMTH[appState.theme] ?? 0;
+
+        if (newWarmth > oldWarmth) {
+           appState.isFlameBurntScheduled = true;
+        }
+    }
+
     appState.previousTheme = appState.theme;
     appState.theme = theme;
+
+    let targetTime;
+
+    if (isManualOverride && theme === 'sunny') {
+        targetTime = 0.5;
+    } else if (isManualOverride && theme === 'night') {
+        targetTime = 0.0;
+    } else {
+        const date = dt || new Date();
+        const hours = date.getUTCHours();
+        const minutes = date.getUTCMinutes();
+        targetTime = (hours * 60 + minutes) / (24 * 60);
+    }
+
+    let currentTime = appState.timeOfDay % 1.0;
+    if (currentTime < 0) currentTime += 1.0;
+
+    if (targetTime < currentTime) {
+        const backwardDistance = currentTime - targetTime;
+        if (backwardDistance > 0.25) {
+            targetTime += 1.0;
+        }
+    }
+
+    appState.targetTimeOfDay = targetTime;
+
+    if (instant) {
+        appState.timeOfDay = appState.targetTimeOfDay;
+        appState.isTransitioning = false;
+        finaliseThemeChange();
+    } else {
+        appState.isTransitioning = true;
+        appState.transitionStartTime = performance.now();
+        appState.startTimeOfDay = appState.timeOfDay;
+    }
 
     if (appState.previousTheme === 'snowy' && appState.theme !== 'snowy') {
         const meltSpeed = THEME_WARMTH[appState.theme] || 1;
@@ -332,59 +393,6 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     }
 
     createClouds(appState.theme);
-
-    const colors = {
-        sunny: {top: '#4A85D3', bottom: '#AEC9E8'},
-        cloudy: {top: '#78909C', bottom: '#CFD8DC'},
-        rainy: {top: '#455A64', bottom: '#78909C'},
-        thunderstorm: {top: '#263238', bottom: '#455A64'},
-        snowy: {top: '#B0BEC5', bottom: '#242B3E'},
-        night: {top: '#0f1018', bottom: '#242B3E'},
-        misty: {top: '#B0BEC5', bottom: '#CFD8DC'},
-        sunset: {top: '#F79D51', bottom: '#F27164'},
-    };
-
-    let targetTime;
-    
-    if (isManualOverride && theme === 'sunny' ) {
-        targetTime = 0.5;
-    } else if (isManualOverride && theme === 'night') {
-        targetTime = 0.0;
-    } else {
-        const date = dt || new Date();
-        const hours = date.getUTCHours();
-        const minutes = date.getUTCMinutes();
-        targetTime = (hours * 60 + minutes) / (24 * 60);
-    }
-
-    const currentTime = appState.timeOfDay;
-
-    const isConsideredDay = (time) => time >= 0.25 && time < 0.75;
-    const isConsideredNight = (time) => !isConsideredDay(time);
-    const isBackwardJump = targetTime < currentTime;
-
-    const staysInDay = isConsideredDay(currentTime) && isConsideredDay(targetTime);
-    const staysInNight = isConsideredNight(currentTime) && isConsideredNight(targetTime);
-
-    if (isBackwardJump && (staysInDay || staysInNight)) {
-
-    } else if (isBackwardJump) {
-        targetTime += 1.0;
-    }
-
-    appState.targetTimeOfDay = targetTime;
-
-    if (instant) {
-        appState.timeOfDay = appState.targetTimeOfDay % 1.0;
-        appState.skyColors = {...colors[theme]};
-        appState.targetSkyColors = {...colors[theme]};
-        appState.isTransitioning = false;
-        finaliseThemeChange();
-    } else {
-        appState.isTransitioning = true;
-        appState.transitionStartTime = performance.now();
-        appState.targetSkyColors = {...colors[theme]};
-    }
 
     bodyEl.className = `theme-${theme}`;
     updateToolsVisibility(); 
@@ -407,6 +415,12 @@ function finaliseThemeChange() {
             appState.activeWeatherEffect = 'snowy';
             break;
     }
+
+    if (appState.isFlameBurntScheduled) {
+        createFlameBurst();
+        appState.isFlameBurntScheduled = false;
+    }
+
 }
 
 function isNight(theme) {
@@ -504,16 +518,12 @@ function animate(timestamp) {
     if (appState.isTransitioning) {
         const elapsed = timestamp - appState.transitionStartTime;
         transitionProgress = Math.min(elapsed / appState.transitionDuration, 1.0);
-        appState.timeOfDay = lerp(appState.timeOfDay, appState.targetTimeOfDay, 0.01);
-
-        if (appState.timeOfDay >= 1.0) {
-            appState.timeOfDay -= 1.0;
-            appState.targetTimeOfDay -= 1.0;
-        }
-
+        appState.timeOfDay = lerp(appState.startTimeOfDay, appState.targetTimeOfDay, transitionProgress);
+        
         if (transitionProgress >= 1.0) {
             appState. isTransitioning = false;
-            appState.skyColors = {...appState.targetSkyColors};
+            appState.timeOfDay = appState.targetTimeOfDay % 1.0;
+            if (appState.timeOfDay < 0) appState.timeOfDay += 1.0;
             finaliseThemeChange();
         }
     }
@@ -524,7 +534,7 @@ function animate(timestamp) {
     drawCelestialBodies(transitionProgress);
     drawClouds(transitionProgress);
 
-    handleWeatherEffects();
+    handleWeatherEffects(timestamp);
     handleFireEffect();
     handleBurntMouseLogic(timestamp);
     handleRainExtinguishLogic();
@@ -557,25 +567,23 @@ function lerpRgb(c1, c2, amt) {
 function lerpColor(c1, c2, amt) {
     const [r1, g1, b1] = c1.match(/\w\w/g).map(h => parseInt(h, 16));
     const [r2, g2, b2] = c2.match(/\w\w/g).map(h => parseInt(h, 16));
+
     const r = Math.round(lerp(r1, r2, amt));
     const g = Math.round(lerp(g1, g2, amt));
     const b = Math.round(lerp(b1, b2, amt));
-    return `#${(1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1)}`;
+
+    const toHex = (c) => ('0' + c.toString(16)).slice(-2);
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-function drawDynamicSky(progress) {
-    const c1 = appState.isTransitioning ? appState.skyColors.top : appState.targetSkyColors.top;
-    const c2 = appState.isTransitioning ? appState.skyColors.bottom : appState.targetSkyColors.bottom;
-    
-    const topColor = lerpColor(c1, appState.targetSkyColors.top, progress);
-    const bottomColor = lerpColor(c2, appState.targetSkyColors.bottom, progress);
+function drawDynamicSky() {
+    const currentSkyColors = getSkyColorsForTime(appState.timeOfDay % 1.0);
 
     const gradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
-    gradient.addColorStop(0, topColor);
-    gradient.addColorStop(1, bottomColor);
+    gradient.addColorStop(0, currentSkyColors.top);
+    gradient.addColorStop(1, currentSkyColors.bottom);
     skyCtx.fillStyle = gradient;
     skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
-
 }
 
 function drawCelestialBodies() {
@@ -819,6 +827,18 @@ class Particle {
     update() {
         this.x += this.speedX;
         this.y += this.speedY;
+
+        if (mouse.x !== undefined) {
+            const dx = this.x - mouse.x;
+            const dy = this.y - mouse.y;
+            const distance = Math.hypot(dx, dy);
+
+            if (distance < MOUSE_PARTICLE_RADIUS) {
+                const force = (MOUSE_PARTICLE_RADIUS - distance) / MOUSE_PARTICLE_RADIUS;
+                this.x += (dx / distance) * force * MOUSE_PARTICLE_STRENGTH;
+                this.y += (dy / distance) * force * MOUSE_PARTICLE_STRENGTH;
+            }
+        }
 
         const isRainyTheme = appState.theme === 'rainy' || appState.theme === 'thunderstorm';
 
@@ -1090,6 +1110,29 @@ class SootParticle {
     }
 }
 
+function getSkyColorsForTime(time) {
+    let prevStop = SKY_COLOR_STOPS[0];
+    let nextStop = SKY_COLOR_STOPS[SKY_COLOR_STOPS.length - 1];
+
+    for (let i = 1; i < SKY_COLOR_STOPS.length; i++) {
+        if (SKY_COLOR_STOPS[i].time >= time) {
+            nextStop = SKY_COLOR_STOPS[i];
+            prevStop = SKY_COLOR_STOPS[i - 1];
+            break;
+        }
+    }
+
+    const stopDuration = nextStop.time - prevStop.time;
+    let progress = stopDuration === 0 ? 0 : (time - prevStop.time) / stopDuration;
+
+    progress = Math.max(0, Math.min(1, progress));
+
+    const topColor = lerpColor(prevStop.colors.top, nextStop.colors.top, progress);
+    const bottomColor = lerpColor(prevStop.colors.bottom, nextStop.colors.bottom, progress);
+
+    return {top: topColor, bottom: bottomColor};
+}
+
 function createClouds(theme) {
     let targetLight = 0;
     let targetHeavy = 0;
@@ -1175,12 +1218,14 @@ function drawShootingStars() {
     });
 }
 
-function handleWeatherEffects() {
+function handleWeatherEffects(timestamp) {
     const {activeWeatherEffect} = appState;
     if (activeWeatherEffect === 'none' || appState.isTransitioning) return;
 
     const heavyClouds = clouds.filter(c => c.isHeavy && c.alpha > 0.5);
-    if (heavyClouds.length === 0) return;
+    if (heavyClouds.length === 0) {
+        return;
+    }
 
     if (activeWeatherEffect === 'rainy') {
         if (particles.length < 400 && Math.random() > 0.2) {
@@ -1197,17 +1242,17 @@ function handleWeatherEffects() {
             }
         }
     } else if (activeWeatherEffect === 'snowy') {
-        if (particles.length < 200 && Math.random() > 0.4) {
-            for (let i = 0; i < 2; i++) {
-                const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
-                if (cloud.puffs.length === 0) continue;
+        if (particles.length < 200 && (timestamp - lastSnowflakeTime > SNOWFLAKE_INTERVAL)) {
+            lastSnowflakeTime = timestamp;
 
-                const puff = cloud.puffs[Math.floor(Math.random() * cloud.puffs.length)];
-                const x = cloud.x + puff.offsetX + (Math.random() - 0.5) * puff.radius;
-                const y = cloud.y + puff.offsetY + puff.radius * 0.3;
+            const cloud = heavyClouds[Math.floor(Math.random() * heavyClouds.length)];
+            if (cloud.puffs.length === 0) return;
 
-                particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
-            }
+            const puff = cloud.puffs[Math.floor(Math.random() * cloud.puffs.length)];
+            const x = cloud.x + puff.offsetX + (Math.random() - 0.5) * puff.radius;
+            const y = cloud.y + puff.offsetY + puff.radius * 0.3;
+
+            particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
         }
     }
 }
@@ -1364,10 +1409,20 @@ function handleBurntMouseLogic(timestamp) {
 }
 
 function handleRainExtinguishLogic() {
-    if (!isHeaterActive || (appState.theme !== 'rainy' && appState.theme !== 'thunderstorm')) {
-        flameDouseCounter = Math.max(0, flameDouseCounter - 0.1);
+    if (!isHeaterActive) {
+        flameDouseCounter = 0;
         return;
     }
+
+    const warmthFactor = THEME_WARMTH[appState.theme] ?? 1;
+    const replenishRate = 0.05 + (warmthFactor * 0.1);
+
+    flameDouseCounter = Math.max(0, flameDouseCounter - replenishRate);
+
+    if (appState.theme !== 'rainy' && appState.theme !== 'thunderstorm') {
+        return;
+    }
+
     const flameRadius = 30;
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
@@ -1375,8 +1430,8 @@ function handleRainExtinguishLogic() {
             const distance = Math.hypot(p.x - mouse.x, p.y - mouse.y);
 
             if (distance < flameRadius) {
-                flameDouseCounter++;
-                smokeParticles.push(new SteamParticle(p.x, p.y));
+                flameDouseCounter+= 2;
+                smokeParticles.push(new SmokeParticle(p.x, p.y));
                 particles.splice(i, 1);
             }
         }
@@ -1400,6 +1455,22 @@ function drawSoot(ctx) {
         } else {
             p.draw(ctx);
         }
+    }
+}
+
+function createFlameBurst() {
+    if (!isHeaterActive || mouse.x === undefined) return;
+
+    const burstAmount = 80;
+    for (let i = 0; i < burstAmount; i++) {
+        let p = new FireParticle(mouse.x, mouse.y);
+
+        p.speedY = Math.random() * 5 + 4;
+        p.size = Math.random() * 30 + 20;
+        p.life = 1; //note
+        p.decay = Math.random() * 0.05 + 0.04;
+
+        fireParticles.push(p);
     }
 }
 
