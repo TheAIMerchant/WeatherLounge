@@ -369,55 +369,110 @@ body.torch-on::before {
     background: #fc4a1a;
 }
 
-.theme-thunderstorm {
-    background: linear-gradient(-45deg, #232526, #414345, #000000, #3c1053);
+/* Clock */
+#clock-container {
+    position: fixed;
+    /*top: 20px;
+    left: 20px;*/
+    /* To move the clock to the top right as you suggested,
+       you could try something like this instead:
+       top: 80px; 
+       right: 250px;
+    */
+    top: 90px;
+    right: 130px;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
 }
 
-.theme-misty {
-    background: linear-gradient(-45deg, #606c88, #3f4c6b, #596164, #868f96);
+#clock-arc-container {
+    width: 140px;
+    height: 140px;
+    position: relative;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0,0,0,0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.2);
 }
 
-.theme-night {
-    background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #0F1626);
+#clock-arc-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
 
-.theme-night body::before {
-    background: transparent;
-    transition: background 0.5s ease;
+.clock-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin-top: -10px;
+    margin-left: -10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.8);
+    text-shadow: 1px 1px 3px black;
 }
 
-.overlay-rainy {
-    background-color: rgba(0, 10, 20, 0.3);
-    backdrop-filter: brightness(0.7) saturate(0.8);
+.icon-moon-peak { transform: rotate(0deg)   translateY(-60px) rotate(0deg); opacity: 1; } /* Top - Midnight */
+.icon-sunrise   { transform: rotate(90deg)  translateY(-60px) rotate(-90deg); }          /* Right - 6 AM */
+.icon-sun-peak  { transform: rotate(180deg) translateY(-60px) rotate(-180deg); }         /* Bottom - Noon */
+.icon-sunset    { transform: rotate(270deg) translateY(-60px) rotate(-270deg); }         /* Left - 6 PM */
+
+#clock-hand-container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    transform-origin: center center;
 }
 
-.overlay-thunderstorm {
-    background-color: rgba(10, 0, 20, 0.4);
-    backdrop-filter: brightness(0.5) contrast(1.2);
+#clock-hand {
+    width: 2px;
+    height: 55px;
+    background: white;
+    position: absolute;
+    bottom: 50%;
+    left: calc(50% - 1px);
+    transform-origin: bottom;
+    box-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 
-.overlay-snowy {
-    background-color: rgba(200, 200, 220, 0.2);
-    backdrop-filter: brightness(0.9) saturate(0.5);
+#clock-hand::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -3px;
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 50%;
 }
 
-.overlay-sunny {
-    background-color: rgba(255, 200, 100, 0.1);
-    backdrop-filter: brightness(1.1) saturate(1.2);
-}
-
-.overlay-night {
-    background-color: rgba(0, 5, 25, 0.5);
-    backdrop-filter: brightness(0.3) saturate(0.7);
-}
-
-.overlay-cloudy {
-    backdrop-filter: brightness(0.95);
-}
-
-.overlay-misty {
-    background-color: rgba(100, 100, 110, 0.2);
-    backdrop-filter: brightness(0.8);
+#clock-display {
+    margin-top: 15px;
+    font-size: 1.2rem;
+    font-weight: 400;
+    color: white;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.8);
+    background: rgba(0,0,0,0.2);
+    padding: 2px 10px;
+    border-radius: 20px;
 }
 
 footer {

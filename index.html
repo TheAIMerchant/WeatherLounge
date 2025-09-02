@@ -62,6 +62,22 @@
             <button data-theme="thunderstorm"><i class="fa-solid fa-cloud-bolt"></i></button>
             <button data-theme="night"><i class="fa-solid fa-moon"></i></button>
         </div>
+        <div id="clock-container">
+            <div id="clock-arc-container">
+                <svg id="clock-arc-svg" viewBox="0 0 140 140">
+                    <circle cx="70" cy="70" r="60" stroke="rgba(255,255,255,0.3)" stroke-width="2" fill="none" />
+                </svg>
+                <div class="clock-icon icon-moon-peak"><i class="fa-solid fa-moon"></i></div>
+                <div class="clock-icon icon-sunrise"><i class="fa-solid fa-mountain-sun"></i></div>
+                <div class="clock-icon icon-sun-peak"><i class="fa-solid fa-sun"></i></div>
+                <div class="clock-icon icon-sunset"><i class="fa-solid fa-signs-post"></i></div>
+
+                <div id="clock-hand-container">
+                    <div id="clock-hand"></div>
+                </div>
+            </div>
+            <div id="clock-display">12:00</div>
+        </div>
         <audio id="rain-sound" src="assets/rain-sound.mp3" loop></audio>
         <audio id="thunder-sound" src="assets/thunder-sound.mp3" loop></audio>
         <footer>
