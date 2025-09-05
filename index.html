@@ -67,13 +67,15 @@
                 <svg id="clock-arc-svg" viewBox="0 0 140 140">
                     <circle cx="70" cy="70" r="60" stroke="rgba(255,255,255,0.3)" stroke-width="2" fill="none" />
                 </svg>
-                <div class="clock-icon icon-moon-peak"><i class="fa-solid fa-moon"></i></div>
-                <div class="clock-icon icon-sunrise"><i class="fa-solid fa-mountain-sun"></i></div>
-                <div class="clock-icon icon-sun-peak"><i class="fa-solid fa-sun"></i></div>
-                <div class="clock-icon icon-sunset"><i class="fa-solid fa-signs-post"></i></div>
+                <div class="clock-marker marker-12"><span>12</span></div>
+                <div class="clock-marker marker-3"><span>3</span></div>
+                <div class="clock-marker marker-6"><span>6</span></div>
+                <div class="clock-marker marker-9"><span>9</span></div>
 
                 <div id="clock-hand-container">
-                    <div id="clock-hand"></div>
+                    <div id="hour-hand"></div>
+                    <div id="minute-hand"></div>
+                    <div id="clock-center-dot"></div>
                 </div>
             </div>
             <div id="clock-display">12:00</div>
@@ -85,5 +87,5 @@
             <p>This data is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank">CC BY-SA 4.0</a>.</p>
         </footer>
         <script src="script.js" defer></script>
-    </body>
+    </body> 
 </html>

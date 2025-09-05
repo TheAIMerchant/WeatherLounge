@@ -12,9 +12,11 @@ const uvIndexEl = document.getElementById('uv-index');
 const hourlyForecastEl = document.getElementById('hourly-forecast');
 
 const clockArcContainer = document.getElementById('clock-arc-container');
-const clockHandContainer = document.getElementById('clock-hand-container');
 const clockDisplay = document.getElementById('clock-display');
+const hourHand = document.getElementById('hour-hand');
+const minuteHand = document.getElementById('minute-hand');
 let isDraggingClock = false;
+let clockDragState = { lastMinuteFraction: 0, hourOffset: 0, activeHand: 'minute' };
 
 const THEME_WARMTH = {
     sunny: 3,
@@ -29,16 +31,16 @@ const THEME_WARMTH = {
 const SKY_COLOR_STOPS = [
     {time: 0.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // Midnight
     {time: 0.20, colors: {top: '#0f1018', bottom: '#242B3E'}},    // End of Night
-    {time: 0.23, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Astronomical Twilight
-    {time: 0.26, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Nautical Twilight (horizon purple)
-    {time: 0.29, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Civil Twilight (horizon orange)
-    {time: 0.40, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Morning
+    {time: 0.22, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Astronomical Twilight
+    {time: 0.25, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Nautical Twilight (horizon purple)
+    {time: 0.28, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Civil Twilight (horizon orange)
+    {time: 0.42, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Morning
     {time: 0.5,  colors: {top: '#63a4ff', bottom: '#a2c8f0'}},    // Midday
-    {time: 0.60, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Afternoon
-    {time: 0.71, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Sunset Start (horizon orange)
-    {time: 0.74, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Civil Twilight (horizon purple)
-    {time: 0.77, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Nautical Twilight
-    {time: 0.80, colors: {top: '#0f1018', bottom: '#242B3E'}},    // Night starts
+    {time: 0.58, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Afternoon
+    {time: 0.68, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Sunset Start (horizon orange)
+    {time: 0.75, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Civil Twilight (horizon purple)
+    {time: 0.78, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Nautical Twilight
+    {time: 0.81, colors: {top: '#0f1018', bottom: '#242B3E'}},    // Night starts
     {time: 1.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // End of cycle
 ];
 
@@ -69,9 +71,13 @@ icons.play();
 let appState = {
     theme: '',
     previousTheme: '',
-    isTransitioning: false,
-    transitionStartTime: 0,
-    transitionDuration: 5000,
+    isTimeTransitioning: false,
+    timeTransitionStartTime: 0,
+    timeTransitionDuration: 5000,
+    isThemeTransitioning: false,
+    themeTransitionStartTime: 0,
+    themeTransitionDuration: 3000,
+    themeTransitionProgress: 1,
     startTimeOfDay: 0.5,
     timeOfDay: 0.5,
     targetTimeOfDay: 0.5,
@@ -79,6 +85,8 @@ let appState = {
     moon: {x: 0, y: 0, size: 40},
     isFlameBurntScheduled: false,
     activeWeatherEffect: 'none',
+    // FIX 1: Added a state to lock the theme when manually selected
+    isThemeLocked: false,
 };
 
 let particles = [];
@@ -114,7 +122,7 @@ const MOUSE_PARTICLE_STRENGTH = 2;
 const SNOWFLAKE_MELT_DELAY_FRAMES = 30;
 const SOOT_PRODUCTION_INTERVAL = 150;
 const SOOT_DELAY = 1500;
-const RAIN_HITS_TO_EXTINGUISH = 27;
+const RAIN_HITS_TO_EXTINGUISH = 20;
 const SNOWFLAKE_INTERVAL = 50;
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -146,10 +154,23 @@ function addEventListeners() {
         }
     });
 
+    // FIX 2: Rewrote clock interaction logic for realistic hand movement
     clockArcContainer.addEventListener('mousedown', (e) => {
         isDraggingClock = true;
+        appState.isTimeTransitioning = false;
+
+        // Initialize drag state based on the clock's current time for a smooth start
+        const time = appState.timeOfDay % 1.0;
+        const totalMinutes = time * 1440;
+        const hours = totalMinutes / 60;
+        const minutes = totalMinutes % 60;
+
+        clockDragState.lastMinuteFraction = minutes / 60;
+        clockDragState.hourOffset = Math.floor(hours);
+
         updateClockFromEvent(e);
     });
+
     window.addEventListener('mousemove', (e) => {
         if (isDraggingClock) {
             updateClockFromEvent(e);
@@ -163,38 +184,58 @@ function addEventListeners() {
 function setTimeOfDay(newTime, transitionDuration = 5000) {
     let currentTime = appState.timeOfDay % 1.0;
     if (currentTime < 0) currentTime += 1.0;
-    
-    if (Math.abs(newTime - currentTime) > 0.5) {
-        if (newTime < currentTime) newTime += 1.0;
-        else currentTime += 1.0;
+
+    const threeHours = 3 / 24.0;
+    if (newTime < currentTime) {
+        const backwardDistance = currentTime - newTime;
+        if (backwardDistance > threeHours) {
+            newTime += 1.0;
+        }
+    }
+    else {
+        const forwardDistance = newTime - currentTime;
+        if (forwardDistance > 1.0 - threeHours) {
+            currentTime += 1.0;
+        }
     }
     
     appState.targetTimeOfDay = newTime;
     appState.startTimeOfDay = currentTime;
-    appState.isTransitioning = true;
-    appState.transitionStartTime = performance.now();
-    appState.transitionDuration = transitionDuration;
+    appState.isTimeTransitioning = true;
+    appState.timeTransitionStartTime = performance.now();
+    appState.timeTransitionDuration = transitionDuration;
 }
 
+// FIX 2: Unified clock update logic for smooth, realistic interaction
 function updateClockFromEvent(e) {
     const rect = clockArcContainer.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
-    // The new origin is the center of the circle
     const centerY = rect.top + rect.height / 2;
-    // Calculate angle, adding PI/2 to make 0 radians point upwards
+    // Calculate angle from mouse position (0 is at the top)
     let angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) + Math.PI / 2;
+    if (angle < 0) { angle += 2 * Math.PI; }
 
-    // Normalize angle to be between 0 and 2*PI
-    if (angle < 0) {
-        angle += 2 * Math.PI;
+    // This single, unified logic treats the clock as a continuous dial.
+    // Dragging the mouse sets the time, and both hands move in sync.
+    const minuteFraction = angle / (2 * Math.PI);
+    
+    // Check if the user has dragged past the 12 o'clock mark to adjust the hour
+    if (clockDragState.lastMinuteFraction > 0.9 && minuteFraction < 0.1) {
+        clockDragState.hourOffset++;
+    } else if (clockDragState.lastMinuteFraction < 0.1 && minuteFraction > 0.9) {
+        clockDragState.hourOffset--;
     }
-
-    // Convert angle to time of day (0.0 to 1.0)
-    const time = angle / (2 * Math.PI);
-
-    appState.timeOfDay = time;
-    appState.targetTimeOfDay = time;
-    appState.isTransitioning = false;
+    clockDragState.lastMinuteFraction = minuteFraction;
+    
+    const newMinuteOfHour = minuteFraction * 60;
+    // The hour is determined by how many times we've wrapped around the clock
+    const newTotalMinutes = (clockDragState.hourOffset * 60) + newMinuteOfHour;
+    
+    const newTimeOfDay = newTotalMinutes / 1440;
+    
+    // Update the app state directly, stopping any ongoing time transition
+    appState.timeOfDay = newTimeOfDay;
+    appState.targetTimeOfDay = newTimeOfDay;
 }
 
 function updateClockVisuals() {
@@ -207,10 +248,15 @@ function updateClockVisuals() {
     if (clockDisplay.textContent !== formattedTime) {
         clockDisplay.textContent = formattedTime;
     }
+    // The minute hand completes a full 360-degree rotation in 60 minutes.
+    const minuteAngle = (minutes / 60) * 360;
+    // The hour hand moves 30 degrees per hour (360/12) plus a fraction based on the minutes.
+    const hourAngle = ((hours % 12) / 12) * 360 + (minutes / 60) * 30;
 
-    // A full 360 degree rotation, with 0.0 (midnight) at the top (0 degrees).
-    const angle = time * 360;
-    clockHandContainer.style.transform = `rotate(${angle}deg)`;
+    if (hourHand && minuteHand) {
+        hourHand.style.transform = `rotate(${hourAngle}deg)`;
+        minuteHand.style.transform = `rotate(${minuteAngle}deg)`;
+    }
 }
 
 function setupCanvases() {
@@ -233,26 +279,6 @@ function handleMouseMove(e) {
     mouse.y = e.clientY;
     bodyEl.style.setProperty('--mouse-x', `${e.clientX}px`);
     bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`);
-}
-
-function handleSearch() {
-    markUserInteraction();
-    const city = cityInput.value.trim();
-    if (city) fetchCoordsByCity(city);
-    else handleError('Please enter a city name.');
-}
-
-function handleGeolocation() {
-    markUserInteraction();
-    if (navigator.geolocation) {
-        showLoader();
-        navigator.geolocation.getCurrentPosition(
-            (position) => fetchWeatherByCoords(position.coords.latitude, position.coords.longitude), 
-                () => handleError('Geolocation denied. Please search for a city.')
-        );
-    } else {
-        handleError('Geolocation is not supported by your browser.');
-    }
 }
 
 async function fetchCoordsByCity(city) {
@@ -286,6 +312,26 @@ async function fetchCityName(lat, lon) {
         return data.length > 0 ? data[0].name : 'Current Location';
     }
     catch(error) { return 'Current Location'; }
+}
+
+function handleSearch() {
+    markUserInteraction();
+    const city = cityInput.value.trim();
+    if (city) fetchCoordsByCity(city);
+    else handleError('Please enter a city name.');
+}
+
+function handleGeolocation() {
+    markUserInteraction();
+    if (navigator.geolocation) {
+        showLoader();
+        navigator.geolocation.getCurrentPosition(
+            (position) => fetchWeatherByCoords(position.coords.latitude, position.coords.longitude), 
+                () => handleError('Geolocation denied. Please search for a city.')
+        );
+    } else {
+        handleError('Geolocation is not supported by your browser.');
+    }
 }
 
 function showLoader() {
@@ -349,6 +395,14 @@ function handleError(message) {
 function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     if (!isManualOverride && appState.theme === theme) return;
 
+    // FIX 1: Lock or unlock the theme based on user interaction
+    if (isManualOverride) {
+        appState.isThemeLocked = true;
+    } else {
+        // Unlock theme when it's set by weather data, not by user clicking a button
+        appState.isThemeLocked = false;
+    }
+    
     if (isHeaterActive && appState.previousTheme) {
         const oldWarmth = THEME_WARMTH[appState.previousTheme] ?? 0;
         const newWarmth = THEME_WARMTH[appState.theme] ?? 0;
@@ -356,8 +410,14 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
            appState.isFlameBurntScheduled = true;
         }
     }
+    
+    if (appState.theme && appState.theme !== theme && !instant) {
+        appState.isThemeTransitioning = true;
+        appState.themeTransitionStartTime = performance.now();
+        appState.themeTransitionProgress = 0;
+    }
 
-    appState.previousTheme = appState.theme;
+    appState.previousTheme = appState.theme || theme;
     appState.theme = theme;
 
     let shouldChangeTime = false;
@@ -378,7 +438,7 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
         if (instant) {
             appState.timeOfDay = targetTime;
             appState.targetTimeOfDay = targetTime;
-            appState.isTransitioning = false;
+            appState.isTimeTransitioning = false;
         } else {
             setTimeOfDay(targetTime, 5000);
         }
@@ -392,10 +452,6 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     } else if (appState.theme === 'snowy' && appState.previousTheme !== 'snowy') {
         frostLines = [];
         createFrost();
-    }
-
-    if (isNight() && stars.length === 0) {
-        createStars(window.innerWidth / 8);
     }
 
     createClouds(appState.theme);
@@ -428,7 +484,26 @@ function finaliseThemeChange() {
 
 function isNight() {
     const time = appState.timeOfDay % 1.0;
-    return time < 0.29 || time > 0.71;
+    return time < 0.28 || time > 0.72;
+}
+
+function updateDynamicThemeState() {
+    const isCurrentlyNight = isNight();
+
+    // FIX 1: Only auto-switch themes if the user hasn't manually locked one.
+    if (!appState.isThemeLocked) {
+        // Auto-toggle between sunny and night themes if they are active
+        if (appState.theme === 'sunny' && isCurrentlyNight) {
+            setTheme('night', true, null, true);
+        } else if (appState.theme === 'night' && !isCurrentlyNight) {
+            setTheme('sunny', true, null, true);
+        }
+    }
+
+    // Ensure stars are created when it becomes night, regardless of theme
+    if (isCurrentlyNight && stars.length === 0) {
+        createStars(window.innerWidth / 8);
+    }
 }
 
 function getThemeFromIcon(iconName) {
@@ -515,17 +590,27 @@ function animate(timestamp) {
     skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
     effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
     
+    updateDynamicThemeState();
     updateClockVisuals();
 
-    if (appState.isTransitioning) {
-        const elapsed = timestamp - appState.transitionStartTime;
-        const progress = Math.min(elapsed / appState.transitionDuration, 1.0);
+    if (appState.isTimeTransitioning) {
+        const elapsed = timestamp - appState.timeTransitionStartTime;
+        const progress = Math.min(elapsed / appState.timeTransitionDuration, 1.0);
         appState.timeOfDay = lerp(appState.startTimeOfDay, appState.targetTimeOfDay, progress);
         
         if (progress >= 1.0) {
-            appState.isTransitioning = false;
+            appState.isTimeTransitioning = false;
             appState.timeOfDay = appState.targetTimeOfDay % 1.0;
             if (appState.timeOfDay < 0) appState.timeOfDay += 1.0;
+        }
+    }
+    
+    if (appState.isThemeTransitioning) {
+        const elapsed = timestamp - appState.themeTransitionStartTime;
+        appState.themeTransitionProgress = Math.min(elapsed / appState.themeTransitionDuration, 1.0);
+        if (appState.themeTransitionProgress >= 1.0) {
+            appState.isThemeTransitioning = false;
+            appState.previousTheme = appState.theme;
         }
     }
 
@@ -549,6 +634,9 @@ function animate(timestamp) {
 
     requestAnimationFrame(animate);
 }
+
+// ... The rest of your code (helper functions, classes, etc.) remains the same ...
+// I am including it here for completeness.
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
@@ -575,7 +663,7 @@ function drawDynamicSky() {
 
 function drawCelestialBodies() {
     skyCtx.save();
-    const time = appState.timeOfDay % 1.0;
+    const time = appState.timeOfDay; // Use non-modulo time for smooth wrapping
     const angle = time * Math.PI * 2 + (Math.PI / 2);
     const centerX = skyCanvas.width / 2;
     const centerY = skyCanvas.height * 1.2;
@@ -629,7 +717,7 @@ function createMoonTexture(size) {
     return canvas;
 }
 function drawUmbrellaShade(ctx) {
-    if (!isUmbrellaActive || appState.theme !== 'sunny' || mouse.x === undefined || appState.sun.y <= 0) {
+    if (!isUmbrellaActive || isNight() || mouse.x === undefined || appState.sun.y > skyCanvas.height) {
         return;
     }
     const dx = mouse.x - appState.sun.x;
@@ -677,30 +765,72 @@ function drawFireAndSmoke(ctx) {
         }
     }
 }
-function getCloudColorSet(theme, isHeavy) {
-    let color = isHeavy ? '200, 205, 210' : '255, 255, 255';
-    let opacity = isHeavy ? 0.85 : 0.7;
-    const time = appState.timeOfDay % 1.0;
-    const isNightTime = time < 0.35 || time > 0.65;
-    if(isNightTime) {
-        color = isHeavy ? '45, 50, 60' : '65, 70, 80';
-        opacity = isHeavy ? 0.8 : 0.65;
-    }
+function getCloudColorForTime(theme, isHeavy, time) {
+    const colors = {
+        normal_day:   isHeavy ? [200, 205, 210] : [255, 255, 255],
+        normal_night: isHeavy ? [45, 50, 60]    : [65, 70, 80],
+        rain_day:     isHeavy ? [90, 100, 110]  : [120, 125, 130],
+        rain_night:   isHeavy ? [80, 90, 100]   : [110, 115, 120],
+        thunder_day:  isHeavy ? [60, 65, 75]    : [80, 85, 95],
+        thunder_night:isHeavy ? [50, 55, 65]    : [70, 75, 85],
+        snow_day:     isHeavy ? [190, 195, 200] : [230, 235, 240],
+        snow_night:   isHeavy ? [180, 185, 190] : [220, 225, 230],
+    };
+
+    let day_colors, night_colors;
     switch (theme) {
-        case 'rainy':
-            color = isHeavy ? '80, 90, 100' : '110, 115, 120';
-            opacity = isHeavy ? 0.9 : 0.75;
-            break;
-        case 'thunderstorm':
-            color = isHeavy ? '50, 55, 65' : '70, 75, 85';
-            opacity = isHeavy ? 0.95 : 0.8;
-            break;
-        case 'snowy':
-             color = isHeavy ? '180, 185, 190' : '220, 225, 230';
-             opacity = 0.85;
-            break;
+        case 'rainy': day_colors = colors.rain_day; night_colors = colors.rain_night; break;
+        case 'thunderstorm': day_colors = colors.thunder_day; night_colors = colors.thunder_night; break;
+        case 'snowy': day_colors = colors.snow_day; night_colors = colors.snow_night; break;
+        default: day_colors = colors.normal_day; night_colors = colors.normal_night; break;
     }
-    return { color, opacity };
+    
+    const day_opacity = isHeavy ? 0.85 : 0.7;
+    const night_opacity = isHeavy ? 0.8 : 0.65;
+    
+    const dawn_start = 0.25, dawn_end = 0.40;
+    const dusk_start = 0.65, dusk_end = 0.80;
+    let daylight = 0.0;
+
+    if (time >= dawn_end && time <= dusk_start) {
+        daylight = 1.0;
+    } else if (time > dawn_start && time < dawn_end) {
+        daylight = (time - dawn_start) / (dawn_end - dawn_start);
+    } else if (time > dusk_start && time < dusk_end) {
+        daylight = 1.0 - ((time - dusk_start) / (dusk_end - dusk_start));
+    }
+    
+    const r = lerp(night_colors[0], day_colors[0], daylight);
+    const g = lerp(night_colors[1], day_colors[1], daylight);
+    const b = lerp(night_colors[2], day_colors[2], daylight);
+    const final_opacity = lerp(night_opacity, day_opacity, daylight);
+
+    let opacity_override = null;
+    if (theme === 'rainy') opacity_override = isHeavy ? 0.9 : 0.75;
+    if (theme === 'thunderstorm') opacity_override = isHeavy ? 0.95 : 0.8;
+    if (theme === 'snowy') opacity_override = 0.85;
+
+    return { rgb: [r, g, b], opacity: opacity_override !== null ? opacity_override : final_opacity };
+}
+
+function getCloudColorSet(isHeavy) {
+    const time = appState.timeOfDay % 1.0;
+    const targetSet = getCloudColorForTime(appState.theme, isHeavy, time);
+
+    if (appState.isThemeTransitioning && appState.themeTransitionProgress < 1.0) {
+        const sourceSet = getCloudColorForTime(appState.previousTheme, isHeavy, time);
+        const progress = appState.themeTransitionProgress;
+        
+        const r = Math.round(lerp(sourceSet.rgb[0], targetSet.rgb[0], progress));
+        const g = Math.round(lerp(sourceSet.rgb[1], targetSet.rgb[1], progress));
+        const b = Math.round(lerp(sourceSet.rgb[2], targetSet.rgb[2], progress));
+        const opacity = lerp(sourceSet.opacity, targetSet.opacity, progress);
+
+        return { color: `${r}, ${g}, ${b}`, opacity: opacity };
+    }
+
+    const { rgb, opacity } = targetSet;
+    return { color: `${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])}`, opacity };
 }
 class Cloud {
     constructor(yPosition, isHeavy, shouldFadeIn = false) {
@@ -741,7 +871,7 @@ class Cloud {
         if (this.alpha <= 0) return;
         ctx.save();
         ctx.globalAlpha = this.alpha;
-        const currentSet = getCloudColorSet(appState.theme, this.isHeavy);
+        const currentSet = getCloudColorSet(this.isHeavy);
         const baseColor = currentSet.color;
         const baseOpacity = currentSet.opacity;
         this.puffs.forEach(puff => {
@@ -1051,11 +1181,11 @@ function createStars(count) {
 }
 function drawStars() {
     let alphaMultiplier = isNight() ? 1.0 : 0.0;
-    if (appState.isTransitioning) {
+    if (appState.isTimeTransitioning) {
         const startIsNight = (appState.startTimeOfDay % 1.0) < 0.29 || (appState.startTimeOfDay % 1.0) > 0.71;
         const startAlpha = startIsNight ? 1.0 : 0.0;
-        const elapsed = performance.now() - appState.transitionStartTime;
-        const progress = Math.min(elapsed / appState.transitionDuration, 1.0);
+        const elapsed = performance.now() - appState.timeTransitionStartTime;
+        const progress = Math.min(elapsed / appState.timeTransitionDuration, 1.0);
         alphaMultiplier = lerp(startAlpha, alphaMultiplier, progress);
     }
     stars.forEach(s => {
@@ -1064,7 +1194,7 @@ function drawStars() {
     });
 }
 function drawShootingStars() {
-    if (isNight() && !appState.isTransitioning && Math.random() < 0.005 && shootingStars.length < 3) {
+    if (isNight() && !appState.isTimeTransitioning && Math.random() < 0.005 && shootingStars.length < 3) {
         shootingStars.push(new shootingStar());
     }
     shootingStars.forEach((star, index) => {
@@ -1075,7 +1205,7 @@ function drawShootingStars() {
 }
 function handleWeatherEffects(timestamp) {
     const {activeWeatherEffect} = appState;
-    if (activeWeatherEffect === 'none' || appState.isTransitioning) return;
+    if (activeWeatherEffect === 'none' || appState.isTimeTransitioning) return;
     const heavyClouds = clouds.filter(c => c.isHeavy && c.alpha > 0.5);
     if (heavyClouds.length === 0) return;
     if (activeWeatherEffect === 'rainy' && particles.length < 400 && Math.random() > 0.2) {
