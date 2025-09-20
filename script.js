@@ -2,6 +2,7 @@ const bodyEl = document.body;
 const cityInput = document.getElementById('city-input');
 const searchButton = document.getElementById('search-button');
 const geoButton = document.getElementById('geo-button');
+
 const loader = document.getElementById('loader');
 const cardContent = document.getElementById('card-content');
 const locationEl = document.getElementById('location-name');
@@ -15,6 +16,7 @@ const clockArcContainer = document.getElementById('clock-arc-container');
 const clockDisplay = document.getElementById('clock-display');
 const hourHand = document.getElementById('hour-hand');
 const minuteHand = document.getElementById('minute-hand');
+let clockInput;
 let isDraggingClock = false;
 let clockDragState = { lastMinuteFraction: 0, hourOffset: 0, activeHand: 'minute' };
 
@@ -32,16 +34,16 @@ const SKY_COLOR_STOPS = [
     {time: 0.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // Midnight
     {time: 0.20, colors: {top: '#0f1018', bottom: '#242B3E'}},    // End of Night
     {time: 0.22, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Astronomical Twilight
-    {time: 0.25, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Nautical Twilight (horizon purple)
-    {time: 0.28, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Civil Twilight (horizon orange)
+    {time: 0.25, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Nautical Twilight (purple)
+    {time: 0.28, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Civil Twilight (orange)
     {time: 0.42, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Morning
     {time: 0.5,  colors: {top: '#63a4ff', bottom: '#a2c8f0'}},    // Midday
     {time: 0.58, colors: {top: '#4A85D3', bottom: '#AEC9E8'}},    // Afternoon
-    {time: 0.68, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Sunset Start (horizon orange)
-    {time: 0.75, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Civil Twilight (horizon purple)
+    {time: 0.68, colors: {top: '#4A85D3', bottom: '#F79D51'}},    // Sunset Start (orange)
+    {time: 0.75, colors: {top: '#4A85D3', bottom: '#73628A'}},    // Civil Twilight (purple)
     {time: 0.78, colors: {top: '#1c2a49', bottom: '#4a5a7b'}},    // Nautical Twilight
     {time: 0.81, colors: {top: '#0f1018', bottom: '#242B3E'}},    // Night starts
-    {time: 1.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // End of cycle
+    {time: 1.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // Midnight
 ];
 
 // Canvases
@@ -64,9 +66,13 @@ const rainSound = document.getElementById('rain-sound');
 const thunderSound = document.getElementById('thunder-sound');
 const allSounds = [rainSound, thunderSound];
 
-
+// Icon
 const icons = new Skycons({"color" : "white"});
 icons.play();
+
+// Time
+const now = new Date();
+const initialTimeOfDay = (now.getHours() * 60 + now.getMinutes()) / 1440;
 
 let appState = {
     theme: '',
@@ -78,14 +84,16 @@ let appState = {
     themeTransitionStartTime: 0,
     themeTransitionDuration: 3000,
     themeTransitionProgress: 1,
-    startTimeOfDay: 0.5,
-    timeOfDay: 0.5,
-    targetTimeOfDay: 0.5,
+    
+    startTimeOfDay: initialTimeOfDay,
+    timeOfDay: initialTimeOfDay,
+    targetTimeOfDay: initialTimeOfDay,
+    
     sun: {x: 0, y: 0, size: 50},
     moon: {x: 0, y: 0, size: 40},
+    
     isFlameBurntScheduled: false,
     activeWeatherEffect: 'none',
-    // FIX 1: Added a state to lock the theme when manually selected
     isThemeLocked: false,
 };
 
@@ -93,16 +101,19 @@ let particles = [];
 let fireParticles = [];
 let smokeParticles = [];
 let sootParticles = [];
-let isMouseBurnt = false;
+
 let stars = [];
 let shootingStars = [];
 let clouds = [];
 let lightningBolts = [];
+
 let frostLines = [];
-let globalMeltDrips = [];
-let heaterStartTime = [];
-let flameDouseCounter = [];
+let isMouseBurnt = false;
+let heaterStartTime = 0;
+let flameDouseCounter = 0;
+
 let lastSootTime = 0;
+let lastSmokeTime = 0;
 let lastSnowflakeTime = 0;
 
 let userHasInteracted = false;
@@ -117,22 +128,25 @@ const mouseShake = {
 };
 
 const HEATER_MELT_RADIUS = 100;
+const HEATER_SMOKE_INTERVAL = 100;
 const MOUSE_PARTICLE_RADIUS = 50;
 const MOUSE_PARTICLE_STRENGTH = 2;
 const SNOWFLAKE_MELT_DELAY_FRAMES = 30;
 const SOOT_PRODUCTION_INTERVAL = 150;
 const SOOT_DELAY = 1500;
-const RAIN_HITS_TO_EXTINGUISH = 20;
+const RAIN_HITS_TO_EXTINGUISH = 15;
 const SNOWFLAKE_INTERVAL = 50;
 
 window.addEventListener('DOMContentLoaded', () => {
     moonTextureCanvas = createMoonTexture(128);
     setupCanvases();
     addEventListeners();
-    setTheme('sunny', true, null, true);
+    setupClockEditing();
+    const isInitiallyNight = initialTimeOfDay < 0.28 || initialTimeOfDay > 0.72;
+    const initialTheme = isInitiallyNight ? 'night' : 'sunny';
+    setTheme(initialTheme, true, null, false);
     animate();
 });
-
 function addEventListeners() {
     searchButton.addEventListener('click', handleSearch);
     cityInput.addEventListener('keyup', (event) => {
@@ -153,13 +167,10 @@ function addEventListeners() {
             setTheme(button.dataset.theme, false, null, true);
         }
     });
-
-    // FIX 2: Rewrote clock interaction logic for realistic hand movement
     clockArcContainer.addEventListener('mousedown', (e) => {
         isDraggingClock = true;
         appState.isTimeTransitioning = false;
 
-        // Initialize drag state based on the clock's current time for a smooth start
         const time = appState.timeOfDay % 1.0;
         const totalMinutes = time * 1440;
         const hours = totalMinutes / 60;
@@ -180,7 +191,94 @@ function addEventListeners() {
         isDraggingClock = false;
     });
 }
+function setupClockEditing() {
+    const clockContainer = document.getElementById('clock-display-container');
+    const clockInput = document.createElement('input');
+    clockInput.type = 'text';
+    clockInput.id = 'clock-input';
+    clockInput.placeholder = 'HH:MM';
 
+    clockContainer.style.position = 'relative';
+
+    Object.assign(clockInput.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        boxSizing: 'border-box',
+        opacity: '0',
+        pointerEvents: 'none',
+
+        background: 'transport',
+        border: '1px solid rgba(255, 255, 255, 0.7)',
+        color: 'white',
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        textAlign: 'center',
+        outline: 'none',
+        borderRadius: '2px 5px',
+    });
+
+    clockContainer.appendChild(clockInput);
+
+    const showInput = () => {
+        clockInput.value = clockDisplay.textContent;
+        clockInput.style.opacity = '1';
+        clockInput.style.pointerEvents = 'auto';
+clockDisplay.style.opacity = '0'; // Hide the text underneath
+        clockInput.focus();
+        clockInput.select();
+    };
+
+    const hideInput = (processInput) => {
+        if (processInput) {
+            const timeParts = clockInput.value.split(':');
+            let isValid = false;
+
+            if (timeParts.length === 2) {
+                const hours = parseInt(timeParts[0], 10);
+                const minutes = parseInt(timeParts[1], 10);
+
+                if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+                    const newTimeOfDay = (hours * 60 + minutes) / 1440;
+                    setTimeOfDay(newTimeOfDay, 3000); // Smooth 3-second transition
+                    isValid = true;
+                }
+            }
+
+            // If input was invalid, give a visual cue and don't hide
+            if (!isValid) {
+                clockInput.style.borderColor = '#ff6b6b'; // Red border for error
+                setTimeout(() => {
+                    clockInput.style.borderColor = 'rgba(255, 255, 255, 0.7)'; // Revert after a moment
+                }, 1000);
+                return; // Stop the function here
+            }
+        }
+        
+        // Hide the input and show the original time display
+        clockInput.style.opacity = '0';
+        clockInput.style.pointerEvents = 'none';
+        clockDisplay.style.opacity = '1';
+        clockInput.blur();
+    };
+
+    // --- Event Listeners ---
+    clockDisplay.addEventListener('click', showInput);
+    
+    clockInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            hideInput(true); // Process the input
+        } else if (e.key === 'Escape') {
+            hideInput(false); // Cancel, don't process
+        }
+    });
+
+    clockInput.addEventListener('blur', () => {
+        hideInput(true); // Process input when user clicks away
+    });
+}
 function setTimeOfDay(newTime, transitionDuration = 5000) {
     let currentTime = appState.timeOfDay % 1.0;
     if (currentTime < 0) currentTime += 1.0;
@@ -205,21 +303,16 @@ function setTimeOfDay(newTime, transitionDuration = 5000) {
     appState.timeTransitionStartTime = performance.now();
     appState.timeTransitionDuration = transitionDuration;
 }
-
-// FIX 2: Unified clock update logic for smooth, realistic interaction
 function updateClockFromEvent(e) {
     const rect = clockArcContainer.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    // Calculate angle from mouse position (0 is at the top)
+    
     let angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) + Math.PI / 2;
     if (angle < 0) { angle += 2 * Math.PI; }
 
-    // This single, unified logic treats the clock as a continuous dial.
-    // Dragging the mouse sets the time, and both hands move in sync.
     const minuteFraction = angle / (2 * Math.PI);
     
-    // Check if the user has dragged past the 12 o'clock mark to adjust the hour
     if (clockDragState.lastMinuteFraction > 0.9 && minuteFraction < 0.1) {
         clockDragState.hourOffset++;
     } else if (clockDragState.lastMinuteFraction < 0.1 && minuteFraction > 0.9) {
@@ -228,29 +321,32 @@ function updateClockFromEvent(e) {
     clockDragState.lastMinuteFraction = minuteFraction;
     
     const newMinuteOfHour = minuteFraction * 60;
-    // The hour is determined by how many times we've wrapped around the clock
-    const newTotalMinutes = (clockDragState.hourOffset * 60) + newMinuteOfHour;
-    
-    const newTimeOfDay = newTotalMinutes / 1440;
-    
-    // Update the app state directly, stopping any ongoing time transition
+
+   const newTotalMinutes = (clockDragState.hourOffset * 60) + newMinuteOfHour;
+
+   let newTimeOfDay = newTotalMinutes / 1440;
+
+   newTimeOfDay = newTimeOfDay % 1.0;
+   if (newTimeOfDay < 0) {
+    newTimeOfDay += 1.0;
+   }
+
     appState.timeOfDay = newTimeOfDay;
     appState.targetTimeOfDay = newTimeOfDay;
 }
 
 function updateClockVisuals() {
     const time = appState.timeOfDay % 1.0;
-    
     const totalMinutes = Math.floor(time * 1440);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    
     if (clockDisplay.textContent !== formattedTime) {
         clockDisplay.textContent = formattedTime;
     }
-    // The minute hand completes a full 360-degree rotation in 60 minutes.
+
     const minuteAngle = (minutes / 60) * 360;
-    // The hour hand moves 30 degrees per hour (360/12) plus a fraction based on the minutes.
     const hourAngle = ((hours % 12) / 12) * 360 + (minutes / 60) * 30;
 
     if (hourHand && minuteHand) {
@@ -258,7 +354,6 @@ function updateClockVisuals() {
         minuteHand.style.transform = `rotate(${minuteAngle}deg)`;
     }
 }
-
 function setupCanvases() {
     const setCanvasSize = (canvas, ctx) => {
         const rect = canvas.getBoundingClientRect();
@@ -273,14 +368,16 @@ function setupCanvases() {
     effectsCanvas.height = window.innerHeight;
     setCanvasSize(cardEffectsCanvas, cardEffectsCtx);
 }
-
 function handleMouseMove(e) {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
     bodyEl.style.setProperty('--mouse-x', `${e.clientX}px`);
     bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`);
-}
 
+    const cardRect = weatherCard.getBoundingClientRect();
+    mouse.cardX = e.clientX - cardRect.left;
+    mouse.cardY = e.clientY - cardRect.top;
+}
 async function fetchCoordsByCity(city) {
     showLoader();
     try {
@@ -292,7 +389,6 @@ async function fetchCoordsByCity(city) {
     }
     catch (error) { handleError(error.message); }
 }
-
 async function fetchWeatherByCoords(lat, lon) {
     try {
         const response = await fetch(`/api/weather?type=weather&lat=${lat}&lon=${lon}`);
@@ -303,7 +399,6 @@ async function fetchWeatherByCoords(lat, lon) {
     }
     catch (error) { handleError(error.message); }   
 }
-
 async function fetchCityName(lat, lon) {
     try {
         const response = await fetch(`/api/weather?type=reverseGeo&lat=${lat}&lon=${lon}`);
@@ -313,14 +408,12 @@ async function fetchCityName(lat, lon) {
     }
     catch(error) { return 'Current Location'; }
 }
-
 function handleSearch() {
     markUserInteraction();
     const city = cityInput.value.trim();
     if (city) fetchCoordsByCity(city);
     else handleError('Please enter a city name.');
 }
-
 function handleGeolocation() {
     markUserInteraction();
     if (navigator.geolocation) {
@@ -333,21 +426,17 @@ function handleGeolocation() {
         handleError('Geolocation is not supported by your browser.');
     }
 }
-
 function showLoader() {
     cardContent.classList.add('loading');
     loader.style.display = 'block';
 }
-
 function hideLoader() {
     cardContent.classList.remove('loading');
     loader.style.display = 'none';
 }
-
 function markUserInteraction() {
     if (!userHasInteracted) userHasInteracted = true;
 }
-
 function updateUI(weatherData, cityName) {
     hideLoader();
     const {current, hourly} = weatherData;
@@ -366,7 +455,6 @@ function updateUI(weatherData, cityName) {
     
     renderHourlyForecast(hourly || []);
 }
-
 function renderHourlyForecast(hourly) {
     hourlyForecastEl.innerHTML = '';
     const next12Hours = hourly.slice(1,13);
@@ -380,7 +468,6 @@ function renderHourlyForecast(hourly) {
         icons.set(iconID, getWeatherIconName(hour.weather[0].id, hour.dt));
     });
 }
-
 function handleError(message) {
     hideLoader();
     locationEl.textContent = 'Error!';
@@ -391,15 +478,31 @@ function handleError(message) {
     uvIndexEl.textContent = '--';
     hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
 }
-
 function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
-    if (!isManualOverride && appState.theme === theme) return;
+    if (dt && !isManualOverride) {
+        const date = dt;
+        const hours = date.getUTCHours();
+        const minutes = date.getUTCMinutes();
+        const targetTime = (hours * 60 + minutes) / (24 * 60);
+        setTimeOfDay(targetTime, 5000);
+    } else if (isManualOverride && (theme === 'sunny' || theme === 'night')) {
+        const targetTime = (theme === 'sunny') ? 0.5 : 0.0;
+        if (instant) {
+            appState.timeOfDay = targetTime;
+            appState.targetTimeOfDay = targetTime;
+            appState.isTimeTransitioning = false;
+        } else {
+            setTimeOfDay(targetTime, 5000);
+        }
+    }
 
-    // FIX 1: Lock or unlock the theme based on user interaction
+    if (!isManualOverride && appState.theme === theme) {
+        return;
+    }
+
     if (isManualOverride) {
         appState.isThemeLocked = true;
     } else {
-        // Unlock theme when it's set by weather data, not by user clicking a button
         appState.isThemeLocked = false;
     }
     
@@ -419,30 +522,6 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
 
     appState.previousTheme = appState.theme || theme;
     appState.theme = theme;
-
-    let shouldChangeTime = false;
-    let targetTime = 0;
-
-    if (dt && !isManualOverride) {
-        const date = dt;
-        const hours = date.getUTCHours();
-        const minutes = date.getUTCMinutes();
-        targetTime = (hours * 60 + minutes) / (24 * 60);
-        shouldChangeTime = true;
-    } else if (isManualOverride && (theme === 'sunny' || theme === 'night')) {
-        targetTime = (theme === 'sunny') ? 0.5 : 0.0;
-        shouldChangeTime = true;
-    }
-    
-    if (shouldChangeTime) {
-        if (instant) {
-            appState.timeOfDay = targetTime;
-            appState.targetTimeOfDay = targetTime;
-            appState.isTimeTransitioning = false;
-        } else {
-            setTimeOfDay(targetTime, 5000);
-        }
-    }
     
     finaliseThemeChange();
     
@@ -458,7 +537,6 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     bodyEl.className = `theme-${theme}`;
     updateToolsVisibility(); 
 }
-
 function finaliseThemeChange() {
     stopAllSounds();
     lightningBolts = [];
@@ -481,18 +559,14 @@ function finaliseThemeChange() {
         appState.isFlameBurntScheduled = false;
     }
 }
-
 function isNight() {
     const time = appState.timeOfDay % 1.0;
     return time < 0.28 || time > 0.72;
 }
-
 function updateDynamicThemeState() {
     const isCurrentlyNight = isNight();
 
-    // FIX 1: Only auto-switch themes if the user hasn't manually locked one.
     if (!appState.isThemeLocked) {
-        // Auto-toggle between sunny and night themes if they are active
         if (appState.theme === 'sunny' && isCurrentlyNight) {
             setTheme('night', true, null, true);
         } else if (appState.theme === 'night' && !isCurrentlyNight) {
@@ -500,12 +574,10 @@ function updateDynamicThemeState() {
         }
     }
 
-    // Ensure stars are created when it becomes night, regardless of theme
     if (isCurrentlyNight && stars.length === 0) {
         createStars(window.innerWidth / 8);
     }
 }
-
 function getThemeFromIcon(iconName) {
     if (iconName === 'CLEAR_DAY') return 'sunny';
     if (iconName === 'CLEAR_NIGHT') return 'night';
@@ -516,7 +588,6 @@ function getThemeFromIcon(iconName) {
     if (iconName === 'FOG') return 'misty';
     return 'cloudy';
 }
-
 function getWeatherIconName(weatherId, dt) {
     const date = new Date(dt * 1000);
     const hours = date.getHours();
@@ -531,11 +602,9 @@ function getWeatherIconName(weatherId, dt) {
     if (weatherId > 802) return 'CLOUDY';
     return 'CLOUDY';
 }
-
 function stopAllSounds(){
     allSounds.forEach(sound => fadeSound(sound, 0, 500));    
 }
-
 function fadeSound(audio, targetVolume, duration) {
     if (!userHasInteracted && targetVolume > 0) return;
     if (targetVolume > 0 && audio.paused) audio.play().catch(() => {});
@@ -558,7 +627,6 @@ function fadeSound(audio, targetVolume, duration) {
     }
     animateFade();
 }
-
 function toggleTool(tool) {
     if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
     if (tool === 'heater') {
@@ -572,9 +640,8 @@ function toggleTool(tool) {
         }
     }
     if (tool === 'torch') isTorchActive = !isTorchActive;    
-    updateToolsVisibility(appState.theme);
+    updateToolsVisibility();
 }
-
 function updateToolsVisibility() {
     umbrellaButton.style.display = 'block';
     heaterButton.style.display = 'block';
@@ -585,7 +652,6 @@ function updateToolsVisibility() {
     torchButton.classList.toggle('active', isTorchActive);
     bodyEl.classList.toggle('torch-on', isTorchActive);
 }
-
 function animate(timestamp) {
     skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
     effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
@@ -613,35 +679,33 @@ function animate(timestamp) {
             appState.previousTheme = appState.theme;
         }
     }
-
     drawDynamicSky();
     drawStars();
     drawShootingStars();
     drawCelestialBodies();
     drawClouds();
-    handleWeatherEffects(timestamp);
-    handleFireEffect();
-    handleBurntMouseLogic(timestamp);
-    handleRainExtinguishLogic();
+
     drawParticles();
-    drawFireAndSmoke(effectsCtx);
-    drawSoot(effectsCtx);
+
+    handleWeatherEffects(timestamp);
     drawLightning();
-    drawMeltDrips();
     drawUmbrellaShade(effectsCtx);
     drawCardEffects();
 
 
+
+    handleFireEffect(timestamp);
+    handleBurntMouseLogic(timestamp);
+    handleRainExtinguishLogic();
+    drawFireAndSmoke(effectsCtx);
+    drawSoot(effectsCtx);
+
     requestAnimationFrame(animate);
 }
-
-// ... The rest of your code (helper functions, classes, etc.) remains the same ...
-// I am including it here for completeness.
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
 }
-
 function lerpColor(c1, c2, amt) {
     const [r1, g1, b1] = c1.match(/\w\w/g).map(h => parseInt(h, 16));
     const [r2, g2, b2] = c2.match(/\w\w/g).map(h => parseInt(h, 16));
@@ -651,7 +715,6 @@ function lerpColor(c1, c2, amt) {
     const toHex = (c) => ('0' + c.toString(16)).slice(-2);
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
-
 function drawDynamicSky() {
     const currentSkyColors = getSkyColorsForTime(appState.timeOfDay % 1.0);
     const gradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
@@ -660,10 +723,9 @@ function drawDynamicSky() {
     skyCtx.fillStyle = gradient;
     skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
 }
-
 function drawCelestialBodies() {
     skyCtx.save();
-    const time = appState.timeOfDay; // Use non-modulo time for smooth wrapping
+    const time = appState.timeOfDay;
     const angle = time * Math.PI * 2 + (Math.PI / 2);
     const centerX = skyCanvas.width / 2;
     const centerY = skyCanvas.height * 1.2;
@@ -739,10 +801,19 @@ function drawUmbrellaShade(ctx) {
     }
     ctx.restore();
 }
-function handleFireEffect() {
+function handleFireEffect(timestamp) {
     if (!isHeaterActive || mouse.x === undefined) return;
+    
     for (let i = 0; i < 3; i++) {
         fireParticles.push(new FireParticle(mouse.x, mouse.y));
+    }
+
+    if (timestamp - lastSmokeTime > HEATER_SMOKE_INTERVAL) {
+        const smokeY = mouse.y - 15;
+        const smokeX = mouse.x + (Math.random() - 0.5) * 10;
+
+        smokeParticles.push(new SmokeParticle(smokeX, smokeY));
+        lastSmokeTime = timestamp;
     }
 }
 function drawFireAndSmoke(ctx) {
@@ -907,8 +978,9 @@ class Particle {
             const distance = Math.hypot(dx, dy);
             if (distance < MOUSE_PARTICLE_RADIUS) {
                 const force = (MOUSE_PARTICLE_RADIUS - distance) / MOUSE_PARTICLE_RADIUS;
-                this.x += (dx / distance) * force * MOUSE_PARTICLE_STRENGTH;
-                this.y += (dy / distance) * force * MOUSE_PARTICLE_STRENGTH;
+                const interactionStrength = MOUSE_PARTICLE_STRENGTH * (this.mouseInteractionMultiplier ?? 1);
+                this.x += (dx / distance) * force * interactionStrength;
+                this.y += (dy / distance) * force * interactionStrength;
             }
         }
         if (isUmbrellaActive && particles.length > 0 && mouse.x !== undefined) {
@@ -957,7 +1029,7 @@ class Snowflake extends Particle {
             this.heatExposure = Math.max(0, this.heatExposure - 1);
         }
         if (this.heatExposure > SNOWFLAKE_MELT_DELAY_FRAMES) {
-            globalMeltDrips.push(new MeltDrip(this.x, this.y));
+            particles.push(new MeltDrip(this.x, this.y));
             this.life = 0;
             return;
         }
@@ -965,14 +1037,14 @@ class Snowflake extends Particle {
         if (isWarmerTheme) {
             const meltChance = (THEME_WARMTH[appState.theme] / 3) * 0.005;
             if (Math.random() < meltChance) {
-                globalMeltDrips.push(new MeltDrip(this.x, this.y));
+                particles.push(new MeltDrip(this.x, this.y));
                 this.life = 0;
                 return;
             }
         }
         if (this.y > effectsCanvas.height - 5) {
             if (isWarmerTheme) {
-                globalMeltDrips.push(new MeltDrip(this.x, this.y));
+                particles.push(new MeltDrip(this.x, this.y));
             }
             this.life = 0;
         }
@@ -1339,14 +1411,24 @@ function handleRainExtinguishLogic() {
     if (!isHeaterActive) { flameDouseCounter = 0; return; }
     flameDouseCounter = Math.max(0, flameDouseCounter - (0.05 + ((THEME_WARMTH[appState.theme] ?? 1) * 0.1)));
     if (appState.theme !== 'rainy' && appState.theme !== 'thunderstorm') return;
+
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
-        if (p instanceof RainDrop && Math.hypot(p.x - mouse.x, p.y - mouse.y) < 30) {
-            flameDouseCounter += 2;
-            smokeParticles.push(new SmokeParticle(p.x, p.y));
-            particles.splice(i, 1);
+        const distanceToFlame = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+
+        if (distanceToFlame < 30) {
+            if (p instanceof RainDrop) {
+                flameDouseCounter += 2;
+                smokeParticles.push(new SmokeParticle(p.x, p.y));
+                particles.splice(i, 1);
+            }
+            else if (p instanceof MeltDrip) {
+                smokeParticles.push(new SteamParticle(p.x, p.y));
+                particles.splice(i, 1);
+            }
         }
     }
+
     if (flameDouseCounter >= RAIN_HITS_TO_EXTINGUISH) {
         for (let i = 0; i < 25; i++) smokeParticles.push(new SteamParticle(mouse.x, mouse.y));
         toggleTool('heater');
@@ -1371,21 +1453,25 @@ function createFlameBurst() {
         fireParticles.push(p);
     }
 }
-class MeltDrip {
+class MeltDrip extends Particle {
     constructor(x, y) {
-        this.x = x; this.y = y;
-        this.r = 2.0;
-        this.speedY = Math.random() * 0.5 + 0.2;
+        super(x, y, 2.0, 0, Math.random() * 0.5 + 0.2);
         this.gravity = 0.02;
+        this.mouseInteractionMultiplier = 0.3;
     }
-    update() { this.speedY += this.gravity; this.y += this.speedY; }
+
+    update() {
+        this.speedY += this.gravity;
+        super.update(); 
+    }
+
     draw(ctx) {
-        const streakLength = this.r * 5;
+        const streakLength = this.size * 5;
         const gradient = ctx.createLinearGradient(this.x, this.y - streakLength, this.x, this.y);
         gradient.addColorStop(0, `rgba(210, 220, 235, 0)`);
         gradient.addColorStop(1, `rgba(210, 220, 235, 0.6)`);
         ctx.strokeStyle = gradient;
-        ctx.lineWidth = this.r * 0.75;
+        ctx.lineWidth = this.size * 0.75;
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(this.x, this.y - streakLength);
@@ -1419,7 +1505,7 @@ class FrostCrystal {
                 if (this.dripCooldown <= 0 && Math.random() < 0.005) {
                  const dripPoint = this.path[this.path.length - 1];
                  const cardRect = weatherCard.getBoundingClientRect();
-                 globalMeltDrips.push(new MeltDrip(cardRect.left + dripPoint.x, cardRect.top + dripPoint.y));
+                 particles.push(new MeltDrip(cardRect.left + dripPoint.x, cardRect.top + dripPoint.y));
                  this.dripCooldown = 30 + Math.random() * 100;
                 }
             } else this.life = 0;
@@ -1565,13 +1651,5 @@ function drawFrost() {
         else if (side === 2) { x = Math.random() * width; y = 0; angle = Math.random() * Math.PI / 2 + Math.PI / 4; }
         else { x = Math.random() * width; y = height; angle = Math.random() * Math.PI / 2 - Math.PI - Math.PI / 4; }
         frostLines.push(new FrostCrystal(x, y, angle, cardEffectsCtx));
-    }
-}
-function drawMeltDrips() {
-    for (let i = globalMeltDrips.length - 1; i >= 0; i--) {
-        const drip = globalMeltDrips[i];
-        drip.update();
-        if (drip.y > effectsCanvas.height) globalMeltDrips.splice(i, 1);
-        else drip.draw(effectsCtx);
     }
 }
