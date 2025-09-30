@@ -4,11 +4,11 @@
 The idea was to build an interactive and dynamic weather site, essentially 'gamifiying' weather. 
 
 ## Features
-1. Weather recall - duh
+1. Weather recall
 2. 'Live' sky
 3. Interactive weather themes, including rain and snow
 4. Sound
-5. Interactive tools - and umbrella to block rain, a heater to melt 'frost' and a torch to light up the night sky
+5. Interactive tools - including an umbrella to block rain, a heater to melt 'frost' and a torch to light up the night sky
 
 ## Building Blocks
 1. HTML

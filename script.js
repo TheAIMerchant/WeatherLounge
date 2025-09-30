@@ -146,6 +146,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setTheme(initialTheme, true, null, false);
     animate();
 });
+
 function addEventListeners() {
     searchButton.addEventListener('click', handleSearch);
     cityInput.addEventListener('keyup', (event) => {
@@ -189,6 +190,7 @@ function addEventListeners() {
         isDraggingClock = false;
     });
 }
+
 function setTimeOfDay(newTime, transitionDuration = 5000) {
     let currentTime = appState.timeOfDay % 1.0;
     if (currentTime < 0) currentTime += 1.0;
@@ -213,6 +215,7 @@ function setTimeOfDay(newTime, transitionDuration = 5000) {
     appState.timeTransitionStartTime = performance.now();
     appState.timeTransitionDuration = transitionDuration;
 }
+
 function updateClockFromEvent(e) {
     const rect = clockArcContainer.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -264,6 +267,7 @@ function updateClockVisuals() {
         minuteHand.style.transform = `rotate(${minuteAngle}deg)`;
     }
 }
+
 function setupCanvases() {
     const setCanvasSize = (canvas, ctx) => {
         const rect = canvas.getBoundingClientRect();
@@ -278,6 +282,7 @@ function setupCanvases() {
     effectsCanvas.height = window.innerHeight;
     setCanvasSize(cardEffectsCanvas, cardEffectsCtx);
 }
+
 function handleMouseMove(e) {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
@@ -288,6 +293,7 @@ function handleMouseMove(e) {
     mouse.cardX = e.clientX - cardRect.left;
     mouse.cardY = e.clientY - cardRect.top;
 }
+
 async function fetchCoordsByCity(city) {
     showLoader();
     try {
@@ -299,6 +305,7 @@ async function fetchCoordsByCity(city) {
     }
     catch (error) { handleError(error.message); }
 }
+
 async function fetchWeatherByCoords(lat, lon) {
     try {
         const response = await fetch(`/api/weather?type=weather&lat=${lat}&lon=${lon}`);
@@ -309,6 +316,7 @@ async function fetchWeatherByCoords(lat, lon) {
     }
     catch (error) { handleError(error.message); }   
 }
+
 async function fetchCityName(lat, lon) {
     try {
         const response = await fetch(`/api/weather?type=reverseGeo&lat=${lat}&lon=${lon}`);
@@ -318,12 +326,14 @@ async function fetchCityName(lat, lon) {
     }
     catch(error) { return 'Current Location'; }
 }
+
 function handleSearch() {
     markUserInteraction();
     const city = cityInput.value.trim();
     if (city) fetchCoordsByCity(city);
     else handleError('Please enter a city name.');
 }
+
 function handleGeolocation() {
     markUserInteraction();
     if (navigator.geolocation) {
@@ -336,17 +346,21 @@ function handleGeolocation() {
         handleError('Geolocation is not supported by your browser.');
     }
 }
+
 function showLoader() {
     cardContent.classList.add('loading');
     loader.style.display = 'block';
 }
+
 function hideLoader() {
     cardContent.classList.remove('loading');
     loader.style.display = 'none';
 }
+
 function markUserInteraction() {
     if (!userHasInteracted) userHasInteracted = true;
 }
+
 function updateUI(weatherData, cityName) {
     hideLoader();
     const {current, hourly} = weatherData;
@@ -365,6 +379,7 @@ function updateUI(weatherData, cityName) {
     
     renderHourlyForecast(hourly || []);
 }
+
 function renderHourlyForecast(hourly) {
     hourlyForecastEl.innerHTML = '';
     const next12Hours = hourly.slice(1,13);
@@ -378,6 +393,7 @@ function renderHourlyForecast(hourly) {
         icons.set(iconID, getWeatherIconName(hour.weather[0].id, hour.dt));
     });
 }
+
 function handleError(message) {
     hideLoader();
     locationEl.textContent = 'Error!';
@@ -388,6 +404,7 @@ function handleError(message) {
     uvIndexEl.textContent = '--';
     hourlyForecastEl.innerHTML = '<p>Could not load forecast.</p>';
 }
+
 function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     if (dt && !isManualOverride) {
         const date = dt;
@@ -447,6 +464,7 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
     bodyEl.className = `theme-${theme}`;
     updateToolsVisibility(); 
 }
+
 function finaliseThemeChange() {
     stopAllSounds();
     lightningBolts = [];
@@ -469,10 +487,12 @@ function finaliseThemeChange() {
         appState.isFlameBurntScheduled = false;
     }
 }
+
 function isNight() {
     const time = appState.timeOfDay % 1.0;
     return time < 0.28 || time > 0.72;
 }
+
 function updateDynamicThemeState() {
     const isCurrentlyNight = isNight();
 
@@ -488,6 +508,7 @@ function updateDynamicThemeState() {
         createStars(window.innerWidth / 8);
     }
 }
+
 function getThemeFromIcon(iconName) {
     if (iconName === 'CLEAR_DAY') return 'sunny';
     if (iconName === 'CLEAR_NIGHT') return 'night';
@@ -498,6 +519,7 @@ function getThemeFromIcon(iconName) {
     if (iconName === 'FOG') return 'misty';
     return 'cloudy';
 }
+
 function getWeatherIconName(weatherId, dt) {
     const date = new Date(dt * 1000);
     const hours = date.getHours();
@@ -512,9 +534,11 @@ function getWeatherIconName(weatherId, dt) {
     if (weatherId > 802) return 'CLOUDY';
     return 'CLOUDY';
 }
+
 function stopAllSounds(){
     allSounds.forEach(sound => fadeSound(sound, 0, 500));    
 }
+
 function fadeSound(audio, targetVolume, duration) {
     if (!userHasInteracted && targetVolume > 0) return;
     if (targetVolume > 0 && audio.paused) audio.play().catch(() => {});
@@ -537,6 +561,7 @@ function fadeSound(audio, targetVolume, duration) {
     }
     animateFade();
 }
+
 function toggleTool(tool) {
     if (tool === 'umbrella') isUmbrellaActive = !isUmbrellaActive;
     if (tool === 'heater') {
@@ -553,6 +578,7 @@ function toggleTool(tool) {
     
     updateToolsVisibility();
 }
+
 function updateToolsVisibility() {
     umbrellaButton.style.display = 'block';
     heaterButton.style.display = 'block';
@@ -563,6 +589,7 @@ function updateToolsVisibility() {
     torchButton.classList.toggle('active', isTorchActive);
     bodyEl.classList.toggle('torch-on', isTorchActive);
 }
+
 function animate(timestamp) {
     skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
     effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
@@ -615,6 +642,7 @@ function animate(timestamp) {
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
 }
+
 function lerpColor(c1, c2, amt) {
     const [r1, g1, b1] = c1.match(/\w\w/g).map(h => parseInt(h, 16));
     const [r2, g2, b2] = c2.match(/\w\w/g).map(h => parseInt(h, 16));
@@ -624,6 +652,7 @@ function lerpColor(c1, c2, amt) {
     const toHex = (c) => ('0' + c.toString(16)).slice(-2);
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
+
 function drawDynamicSky() {
     const currentSkyColors = getSkyColorsForTime(appState.timeOfDay % 1.0);
     const gradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
@@ -632,6 +661,7 @@ function drawDynamicSky() {
     skyCtx.fillStyle = gradient;
     skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
 }
+
 function drawCelestialBodies() {
     skyCtx.save();
     const time = appState.timeOfDay;
@@ -666,6 +696,7 @@ function drawCelestialBodies() {
     }
     skyCtx.restore();
 }
+
 function createMoonTexture(size) {
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -687,6 +718,7 @@ function createMoonTexture(size) {
     }
     return canvas;
 }
+
 function drawUmbrellaShade(ctx) {
     if (!isUmbrellaActive || isNight() || mouse.x === undefined || appState.sun.y > skyCanvas.height) {
         return;
@@ -710,6 +742,7 @@ function drawUmbrellaShade(ctx) {
     }
     ctx.restore();
 }
+
 function handleFireEffect(timestamp) {
     if (!isHeaterActive || mouse.x === undefined) return;
     
@@ -725,6 +758,7 @@ function handleFireEffect(timestamp) {
         lastSmokeTime = timestamp;
     }
 }
+
 function drawFireAndSmoke(ctx) {
     for (let i = fireParticles.length - 1; i >= 0; i--) {
         const p = fireParticles[i];
@@ -745,6 +779,7 @@ function drawFireAndSmoke(ctx) {
         }
     }
 }
+
 function getCloudColorForTime(theme, isHeavy, time) {
     const colors = {
         normal_day:   isHeavy ? [200, 205, 210] : [255, 255, 255],
@@ -812,6 +847,7 @@ function getCloudColorSet(isHeavy) {
     const { rgb, opacity } = targetSet;
     return { color: `${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])}`, opacity };
 }
+
 class Cloud {
     constructor(yPosition, isHeavy, shouldFadeIn = false) {
         this.y = yPosition;
@@ -869,6 +905,7 @@ class Cloud {
         ctx.restore();
     }
 }
+
 class Particle {
     constructor(x, y, size, speedX, speedY) {
         this.x = x;
@@ -909,6 +946,7 @@ class Particle {
         }
     }
 }
+
 class RainDrop extends Particle {
     draw(ctx) {
         ctx.strokeStyle = `rgba(174, 194, 224, ${0.5 * this.life})`;
@@ -919,6 +957,7 @@ class RainDrop extends Particle {
         ctx.stroke();
     }
 }
+
 class Snowflake extends Particle {
     constructor(x, y, size, speedX, speedY) {
         super(x, y, size, speedX, speedY);
@@ -964,6 +1003,7 @@ class Snowflake extends Particle {
         ctx.fill();
     }
 }
+
 class LightningBolt {
     constructor(x, y, angle, depth = 0) {
         this.path = [{x, y}];
@@ -1013,6 +1053,7 @@ class LightningBolt {
         this.branches.forEach(branch => branch.draw(ctx));
     }
 }
+
 class Star {
     constructor() {
         this.x = Math.random() * skyCanvas.width;
@@ -1041,6 +1082,7 @@ class Star {
         }
     }
 }
+
 class shootingStar {
     constructor() { this.reset(); }
     reset() {
@@ -1070,6 +1112,7 @@ class shootingStar {
         }
     }
 }
+
 class SootParticle {
     constructor(mouseX, mouseY) {
         this.offsetX = (Math.random() - 0.5) * 20;
@@ -1105,6 +1148,7 @@ class SootParticle {
         ctx.fill();
     }
 }
+
 function getSkyColorsForTime(time) {
     let prevStop = SKY_COLOR_STOPS[0];
     let nextStop = SKY_COLOR_STOPS[SKY_COLOR_STOPS.length - 1];
@@ -1122,6 +1166,7 @@ function getSkyColorsForTime(time) {
         bottom: lerpColor(prevStop.colors.bottom, nextStop.colors.bottom, progress)
     };
 }
+
 function createClouds(theme) {
     let targetLight = 0, targetHeavy = 0;
     switch (theme) {
@@ -1144,6 +1189,7 @@ function createClouds(theme) {
     }
     clouds.sort((a, b) => a.y - b.y);
 }
+
 function drawClouds() {
     for (let i = clouds.length - 1; i>= 0; i--) {
         const c = clouds[i];
@@ -1152,10 +1198,12 @@ function drawClouds() {
         if (c.alpha <= 0) clouds.splice(i, 1);
     }
 }
+
 function createStars(count) {
     stars = [];
     for (let i = 0; i < count; i++) stars.push(new Star());
 }
+
 function drawStars() {
     let alphaMultiplier = isNight() ? 1.0 : 0.0;
     if (appState.isTimeTransitioning) {
@@ -1170,6 +1218,7 @@ function drawStars() {
         s.draw(skyCtx, alphaMultiplier);
     });
 }
+
 function drawShootingStars() {
     if (isNight() && !appState.isTimeTransitioning && Math.random() < 0.005 && shootingStars.length < 3) {
         shootingStars.push(new shootingStar());
@@ -1180,6 +1229,7 @@ function drawShootingStars() {
         if (!star.active) shootingStars.splice(index, 1);
     });
 }
+
 function handleWeatherEffects(timestamp) {
     const {activeWeatherEffect} = appState;
     if (activeWeatherEffect === 'none' || appState.isTimeTransitioning) return;
@@ -1204,6 +1254,7 @@ function handleWeatherEffects(timestamp) {
         particles.push(new Snowflake(x, y, Math.random() * 2 + 1, Math.random() * 0.5 - 0.25, Math.random() * 1 + 0.5));
     }
 }
+
 function drawParticles() {
     for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
@@ -1212,6 +1263,7 @@ function drawParticles() {
         else p.draw(effectsCtx);
     }
 }
+
 function drawLightning() {
     if (appState.theme === 'thunderstorm' && Math.random() > 0.998 && lightningBolts.length < 1) {
         const heavyClouds = clouds.filter(c => c.isHeavy);
@@ -1228,6 +1280,7 @@ function drawLightning() {
         else bolt.draw(effectsCtx);
     }
 }
+
 function drawCardEffects() {
     const cardRect = weatherCard.getBoundingClientRect();
     if(cardEffectsCanvas.width !== cardRect.width * dpr || cardEffectsCanvas.height !== cardRect.height * dpr) {
@@ -1242,6 +1295,7 @@ function drawCardEffects() {
     if (appState.theme === 'snowy' || frostLines.length > 0) drawFrost();
     if (isHeaterActive) drawCardHeat();
 }
+
 function drawCardHeat() {
     const cardRect = weatherCard.getBoundingClientRect();
     const isMouseOverCard = mouse.x > cardRect.left && mouse.x < cardRect.right && mouse.y > cardRect.top && mouse.y < cardRect.bottom;
@@ -1278,6 +1332,7 @@ function drawCardHeat() {
         cardEffectsCtx.restore();
     }
 }
+
 function handleBurntMouseLogic(timestamp) {
     if (isHeaterActive && !isMouseBurnt && heaterStartTime > 0 && timestamp - heaterStartTime > SOOT_DELAY) {
         if (timestamp - lastSootTime > SOOT_PRODUCTION_INTERVAL && Math.random() > 0.6) {
@@ -1312,6 +1367,7 @@ function handleBurntMouseLogic(timestamp) {
         }
     }
 }
+
 function handleRainExtinguishLogic() {
     if (!isHeaterActive) { flameDouseCounter = 0; return; }
     flameDouseCounter = Math.max(0, flameDouseCounter - (0.05 + ((THEME_WARMTH[appState.theme] ?? 1) * 0.1)));
@@ -1339,6 +1395,7 @@ function handleRainExtinguishLogic() {
         toggleTool('heater');
     }
 }
+
 function drawSoot(ctx) {
     for (let i = sootParticles.length - 1; i >= 0; i--) {
         const p = sootParticles[i];
@@ -1347,6 +1404,7 @@ function drawSoot(ctx) {
         else p.draw(ctx);
     }
 }
+
 function createFlameBurst() {
     if (!isHeaterActive || mouse.x === undefined) return;
     for (let i = 0; i < 80; i++) {
@@ -1358,6 +1416,7 @@ function createFlameBurst() {
         fireParticles.push(p);
     }
 }
+
 class MeltDrip extends Particle {
     constructor(x, y) {
         super(x, y, 2.0, 0, Math.random() * 0.5 + 0.2);
@@ -1384,6 +1443,7 @@ class MeltDrip extends Particle {
         ctx.stroke();
     }
 }
+
 class FrostCrystal {
     constructor(x, y, angle, ctx) {
         this.path = [{x, y}];
@@ -1440,6 +1500,7 @@ class FrostCrystal {
         ctx.stroke();
     }
 }
+
 class FireParticle {
     constructor(x, y) {
         this.x = x; this.y = y;
@@ -1470,6 +1531,7 @@ class FireParticle {
         ctx.restore();
     }
 }
+
 class SmokeParticle {
     constructor(x, y) {
         this.x = x; this.y = y;
@@ -1501,6 +1563,7 @@ class SmokeParticle {
         ctx.restore();
     }
 }
+
 class SteamParticle extends SmokeParticle {
     constructor(x, y) {
         super(x, y);
@@ -1520,6 +1583,7 @@ class SteamParticle extends SmokeParticle {
         ctx.restore();
     }
 }
+
 function createFrost() {
     frostLines = [];
     if (!cardEffectsCanvas) return;
@@ -1535,6 +1599,7 @@ function createFrost() {
         frostLines.push(new FrostCrystal(x, y, angle, cardEffectsCtx));
     }
 }
+
 function drawFrost() {
     let heatMultiplier = 1.0;
     if (appState.theme === 'sunny') heatMultiplier = 1.5;
