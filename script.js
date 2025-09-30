@@ -16,7 +16,6 @@ const clockArcContainer = document.getElementById('clock-arc-container');
 const clockDisplay = document.getElementById('clock-display');
 const hourHand = document.getElementById('hour-hand');
 const minuteHand = document.getElementById('minute-hand');
-let clockInput;
 let isDraggingClock = false;
 let clockDragState = { lastMinuteFraction: 0, hourOffset: 0, activeHand: 'minute' };
 
@@ -120,6 +119,7 @@ let userHasInteracted = false;
 let isUmbrellaActive = false;
 let isHeaterActive = false;
 let isTorchActive = false;
+let isBucketActive = false;
 let moonTextureCanvas;
 
 const mouse = {x: undefined, y: undefined, radius: 300};
@@ -141,7 +141,6 @@ window.addEventListener('DOMContentLoaded', () => {
     moonTextureCanvas = createMoonTexture(128);
     setupCanvases();
     addEventListeners();
-    setupClockEditing();
     const isInitiallyNight = initialTimeOfDay < 0.28 || initialTimeOfDay > 0.72;
     const initialTheme = isInitiallyNight ? 'night' : 'sunny';
     setTheme(initialTheme, true, null, false);
@@ -181,7 +180,6 @@ function addEventListeners() {
 
         updateClockFromEvent(e);
     });
-
     window.addEventListener('mousemove', (e) => {
         if (isDraggingClock) {
             updateClockFromEvent(e);
@@ -189,94 +187,6 @@ function addEventListeners() {
     });
     window.addEventListener('mouseup', () => {
         isDraggingClock = false;
-    });
-}
-function setupClockEditing() {
-    const clockContainer = document.getElementById('clock-display-container');
-    const clockInput = document.createElement('input');
-    clockInput.type = 'text';
-    clockInput.id = 'clock-input';
-    clockInput.placeholder = 'HH:MM';
-
-    clockContainer.style.position = 'relative';
-
-    Object.assign(clockInput.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        boxSizing: 'border-box',
-        opacity: '0',
-        pointerEvents: 'none',
-
-        background: 'transport',
-        border: '1px solid rgba(255, 255, 255, 0.7)',
-        color: 'white',
-        fontFamily: 'inherit',
-        fontSize: 'inherit',
-        textAlign: 'center',
-        outline: 'none',
-        borderRadius: '2px 5px',
-    });
-
-    clockContainer.appendChild(clockInput);
-
-    const showInput = () => {
-        clockInput.value = clockDisplay.textContent;
-        clockInput.style.opacity = '1';
-        clockInput.style.pointerEvents = 'auto';
-clockDisplay.style.opacity = '0'; // Hide the text underneath
-        clockInput.focus();
-        clockInput.select();
-    };
-
-    const hideInput = (processInput) => {
-        if (processInput) {
-            const timeParts = clockInput.value.split(':');
-            let isValid = false;
-
-            if (timeParts.length === 2) {
-                const hours = parseInt(timeParts[0], 10);
-                const minutes = parseInt(timeParts[1], 10);
-
-                if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
-                    const newTimeOfDay = (hours * 60 + minutes) / 1440;
-                    setTimeOfDay(newTimeOfDay, 3000); // Smooth 3-second transition
-                    isValid = true;
-                }
-            }
-
-            // If input was invalid, give a visual cue and don't hide
-            if (!isValid) {
-                clockInput.style.borderColor = '#ff6b6b'; // Red border for error
-                setTimeout(() => {
-                    clockInput.style.borderColor = 'rgba(255, 255, 255, 0.7)'; // Revert after a moment
-                }, 1000);
-                return; // Stop the function here
-            }
-        }
-        
-        // Hide the input and show the original time display
-        clockInput.style.opacity = '0';
-        clockInput.style.pointerEvents = 'none';
-        clockDisplay.style.opacity = '1';
-        clockInput.blur();
-    };
-
-    // --- Event Listeners ---
-    clockDisplay.addEventListener('click', showInput);
-    
-    clockInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            hideInput(true); // Process the input
-        } else if (e.key === 'Escape') {
-            hideInput(false); // Cancel, don't process
-        }
-    });
-
-    clockInput.addEventListener('blur', () => {
-        hideInput(true); // Process input when user clicks away
     });
 }
 function setTimeOfDay(newTime, transitionDuration = 5000) {
@@ -372,7 +282,7 @@ function handleMouseMove(e) {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
     bodyEl.style.setProperty('--mouse-x', `${e.clientX}px`);
-    bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`);
+    bodyEl.style.setProperty('--mouse-y', `${e.clientY}px`); 
 
     const cardRect = weatherCard.getBoundingClientRect();
     mouse.cardX = e.clientX - cardRect.left;
@@ -639,7 +549,8 @@ function toggleTool(tool) {
             flameDouseCounter = 0;
         }
     }
-    if (tool === 'torch') isTorchActive = !isTorchActive;    
+    if (tool === 'torch') isTorchActive = !isTorchActive;  
+    
     updateToolsVisibility();
 }
 function updateToolsVisibility() {
@@ -691,8 +602,6 @@ function animate(timestamp) {
     drawLightning();
     drawUmbrellaShade(effectsCtx);
     drawCardEffects();
-
-
 
     handleFireEffect(timestamp);
     handleBurntMouseLogic(timestamp);
@@ -1017,6 +926,8 @@ class Snowflake extends Particle {
     }
     update() {
         super.update();
+        if (this.life <= 0) return;
+
         let isInHeat = false;
         if (isHeaterActive && mouse.x !== undefined) {
             const distanceToHeater = Math.hypot(this.x - mouse.x, this.y - mouse.y);
@@ -1041,12 +952,6 @@ class Snowflake extends Particle {
                 this.life = 0;
                 return;
             }
-        }
-        if (this.y > effectsCanvas.height - 5) {
-            if (isWarmerTheme) {
-                particles.push(new MeltDrip(this.x, this.y));
-            }
-            this.life = 0;
         }
     }
     draw(ctx) {

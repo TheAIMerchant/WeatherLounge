@@ -348,11 +348,11 @@ body.torch-on::before {
     display: flex;
     justify-content: center;
     align-items: center;
-    background: rgba(0,0,0,0.2);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(30, 40, 60, 0.35);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 50%;
-    border: 1px solid rgba(255,255,255,0.2);
 }
 #clock-arc-svg {
     position: absolute;
@@ -372,12 +372,18 @@ body.torch-on::before {
     color: rgba(255, 255, 255, 0.8);
     text-shadow: 1px 1px 3px black;
 }
-
-.marker-12 { top: 10px; }
-.marker-3 { right: 10px; }
-.marker-6 { bottom: 10px; }
-.marker-9 { left: 10px; }
-
+.marker-12 {
+    top: 10px;
+}
+.marker-3 {
+    right: 10px;
+}
+.marker-6 {
+    bottom: 10px;
+}
+.marker-9 {
+    left: 10px;
+}
 #clock-hand-container {
     position: absolute;
     width: 100%;
