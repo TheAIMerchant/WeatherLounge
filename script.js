@@ -45,6 +45,16 @@ const SKY_COLOR_STOPS = [
     {time: 1.0,  colors: {top: '#0f1018', bottom: '#242B3E'}},    // Midnight
 ];
 
+const FOREGROUND_FILTERS = {
+    sunny:        { brightness: 1.1, saturation: 1.1 },
+    cloudy:       { brightness: 1.0, saturation: 1.0 },
+    misty:        { brightness: 0.9, saturation: 0.9 },
+    rainy:        { brightness: 0.7, saturation: 0.9 },
+    thunderstorm: { brightness: 0.6, saturation: 0.8 },
+    snowy:        { brightness: 0.9, saturation: 0.7 },
+    night:        { brightness: 0.4, saturation: 0.8 }
+};
+
 // Canvases
 const skyCanvas = document.getElementById('sky-canvas');
 const skyCtx = skyCanvas.getContext('2d');
@@ -53,6 +63,7 @@ const effectsCtx = effectsCanvas.getContext('2d');
 const weatherCard = document.querySelector('.weather-card');
 const cardEffectsCanvas = document.getElementById('card-effects-canvas');
 const cardEffectsCtx = cardEffectsCanvas.getContext('2d');
+const foregroundImg = document.getElementById('foreground-img');
 const dpr = window.devicePixelRatio || 1;
 
 // Tools
@@ -246,6 +257,7 @@ function updateClockFromEvent(e) {
 
     appState.timeOfDay = newTimeOfDay;
     appState.targetTimeOfDay = newTimeOfDay;
+    updateForegroundFilter();
 }
 
 function updateClockVisuals() {
@@ -466,21 +478,31 @@ function setTheme(theme, instant = false, dt = null, isManualOverride = false) {
 }
 
 function finaliseThemeChange() {
-    stopAllSounds();
-    lightningBolts = [];
+   lightningBolts = [];
     appState.activeWeatherEffect = 'none';
-
+    const activeSoundConfig = [];
     switch (appState.theme) {
         case 'rainy':
         case 'thunderstorm':
             appState.activeWeatherEffect = 'rainy';
-            fadeSound(rainSound, 0.5, 2000);
-            if (appState.theme === 'thunderstorm') fadeSound(thunderSound, 0.6, 2000);
+            activeSoundConfig.push({ sound: rainSound, volume: 0.5 });
+            if (appState.theme === 'thunderstorm') {
+                activeSoundConfig.push({ sound: thunderSound, volume: 0.6 });
+            }
             break;
         case 'snowy':
             appState.activeWeatherEffect = 'snowy';
             break;
     }
+
+    allSounds.forEach(sound => {
+        const soundConfig = activeSoundConfig.find(s => s.sound === sound);
+        if (soundConfig) {
+            fadeSound(sound, soundConfig.volume, 2000);
+        } else {
+            fadeSound(sound, 0, 500);
+        }
+    });
 
     if (appState.isFlameBurntScheduled) {
         createFlameBurst();
@@ -590,6 +612,33 @@ function updateToolsVisibility() {
     bodyEl.classList.toggle('torch-on', isTorchActive);
 }
 
+function updateForegroundFilter() {
+    const time = appState.timeOfDay % 1.0;
+    const dawn_start = 0.25, dawn_end = 0.40;
+    const dusk_start = 0.65, dusk_end = 0.80;
+    let daylight = 0.0;
+
+    if (time >= dawn_end && time <= dusk_start) {
+        daylight = 1.0;
+    } else if (time > dawn_start && time < dawn_end) {
+        daylight = (time - dawn_start) / (dawn_end - dawn_start);
+    } else if (time > dusk_start && time < dusk_end) {
+        daylight = 1.0 - ((time - dusk_start) / (dusk_end - dusk_start));
+    }
+
+    const sourceDayFilter = FOREGROUND_FILTERS[appState.previousTheme] || FOREGROUND_FILTERS.cloudy;
+    const targetDayFilter = FOREGROUND_FILTERS[appState.theme] || FOREGROUND_FILTERS.cloudy;
+    const nightFilter = FOREGROUND_FILTERS.night;
+
+    const effectiveDayBrightness = lerp(sourceDayFilter.brightness, targetDayFilter.brightness, appState.themeTransitionProgress);
+    const effectiveDaySaturation = lerp(sourceDayFilter.saturation, targetDayFilter.saturation, appState.themeTransitionProgress);
+
+    const finalBrightness = lerp(nightFilter.brightness, effectiveDayBrightness, daylight);
+    const finalSaturation = lerp(nightFilter.saturation, effectiveDaySaturation, daylight);
+
+    foregroundImg.style.filter = `brightness(${finalBrightness}) saturate(${finalSaturation})`;
+}
+
 function animate(timestamp) {
     skyCtx.clearRect(0, 0, skyCanvas.width, skyCanvas.height);
     effectsCtx.clearRect(0, 0, effectsCanvas.width, effectsCanvas.height);
@@ -618,6 +667,7 @@ function animate(timestamp) {
         }
     }
     drawDynamicSky();
+    updateForegroundFilter();
     drawStars();
     drawShootingStars();
     drawCelestialBodies();

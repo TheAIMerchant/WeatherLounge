@@ -46,18 +46,6 @@ body {
     z-index: 1;
     pointer-events: none;
     filter: brightness(1);
-    transition: filter 2.5s ease-in-out;
-}
-.theme-night #foreground-img,
-.theme-rainy #foreground-img,
-.theme-thunderstorm #foreground-img {
-    filter: brightness(0.4);
-}
-.theme-snowy #foreground-img {
-    filter: brightness(0.8) saturate(0.6);
-}
-.theme-sunny #foreground-img {
-    filter: brightness(1.1) saturate(1.1);
 }
 #effects-canvas {
     position: fixed;

@@ -1,7 +1,7 @@
 # Weather Lounge
 
 ## The Concept
-The idea was to build an interactive and dynamic weather site, essentially 'gamifiying' weather. 
+Weather Lounge is an attempt at 'gamifying' the weather!
 
 ## Features
 1. Weather recall
@@ -13,7 +13,7 @@ The idea was to build an interactive and dynamic weather site, essentially 'gami
 ## Building Blocks
 1. HTML
 2. CSS
-3. JS
+3. JavaScript
 4. Icons from Skycons
 5. Data from OpenWeather API
 6. Deployed on vercel
