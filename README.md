@@ -1,6 +1,5 @@
 # Weather Lounge
 [![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://weather-lounge.vercel.app/)
-> **[Try the Live Experience Here](https://weather-lounge.vercel.app/)**
 ## The Concept
 Weather Lounge is an attempt at 'gamifying' the weather by creating a living, interactive environment instead of a static data dashboard.
 
@@ -18,6 +17,8 @@ Weather Lounge is an attempt at 'gamifying' the weather by creating a living, in
     2. Heater: Melts frost off the glass and creates steam/smoke effects.
     3. Torch: A dynamic "light" mask that follows the cursor in dark themes.
     4. Logic Loops: Tools react to weather (e.g., heavy rain can extinguish the heater).
+
+> **[Try the Live Experience Here](https://weather-lounge.vercel.app/)**
 
 
 ## Technology
