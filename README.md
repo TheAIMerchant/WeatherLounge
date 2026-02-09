@@ -1,5 +1,6 @@
 # Weather Lounge
-
+[![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://weather-lounge.vercel.app/)
+> **[Try the Live Experience Here](https://weather-lounge.vercel.app/)**
 ## The Concept
 Weather Lounge is an attempt at 'gamifying' the weather by creating a living, interactive environment instead of a static data dashboard.
 
