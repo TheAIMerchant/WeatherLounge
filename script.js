@@ -77,8 +77,15 @@ const thunderSound = document.getElementById('thunder-sound');
 const allSounds = [rainSound, thunderSound];
 
 // Icon
-const icons = new Skycons({"color" : "white"});
-icons.play();
+let icons;
+try {
+    icons = new Skycons({ "color": "white", "resizeClear": true });
+    icons.play();
+} catch (e) {
+    console.error("Skycons failed to load. Weather icons will be disabled.", e);
+    // Fallback object to prevent the app from crashing when calling icons.set()
+    icons = { set: () => {}, play: () => {} }; 
+}
 
 // Time
 const now = new Date();
